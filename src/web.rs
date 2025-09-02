@@ -58,8 +58,11 @@ pub async fn run() {
             (machine.forward_local_port, machine.forward_target_port)
         {
             let remote_addr = SocketAddr::new(machine.ip.into(), target_port);
+            let mac_str = machine.mac.clone();
+            let wol_port = machine.port;
+
             tokio::spawn(async move {
-                if let Err(e) = forward::proxy(local_port, remote_addr).await {
+                if let Err(e) = forward::proxy(local_port, remote_addr, mac_str, wol_port).await {
                     eprintln!(
                         "Forwarder for {} -> {} failed: {}",
                         local_port, remote_addr, e

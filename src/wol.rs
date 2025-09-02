@@ -59,7 +59,7 @@ pub fn check_host(
 }
 
 /// One-shot TCP "ping": returns true if connect succeeds within timeout.
-fn tcp_check(addr: SocketAddr, timeout: Duration) -> bool {
+pub fn tcp_check(addr: SocketAddr, timeout: Duration) -> bool {
     TcpStream::connect_timeout(&addr, timeout).is_ok()
 }
 
