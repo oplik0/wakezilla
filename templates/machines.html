@@ -1,137 +1,250 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" class="h-full">
     <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport"
+              content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <title>WOL Manager</title>
-    </head>
-    <body>
-        <h1>Registered Machines</h1>
-        <button id="scan-btn">Scan Network</button>
-        <div id="scan-results-container" style="display:none; margin-top: 1em;">
-            <h2>Discovered Devices</h2>
-            <table id="scan-results-table">
-                <thead>
-                    <tr>
-                        <th>IP Address</th>
-                        <th>MAC Address</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                </tbody>
-            </table>
-        </div>
-        <hr>
-        <table>
-            <thead>
-                <tr>
-                    <th>MAC Address</th>
-                    <th>IP Address</th>
-                    <th>Fwd Local Port</th>
-                    <th>Fwd Target Port</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for m in machines %}
-                    <tr>
-                        <td>{{ m.mac }}</td>
-                        <td>{{ m.ip }}</td>
-                        <td>
-                            {% if let Some(port) = m.forward_local_port %}{{ port }}{% endif %}
-                        </td>
-                        <td>
-                            {% if let Some(port) = m.forward_target_port %}{{ port }}{% endif %}
-                        </td>
-                        <td>
-                            <form action="/wol" method="post" style="display: inline;">
-                                <input type="hidden" name="mac" value="{{ m.mac }}">
-                                <button type="submit">Wake Up</button>
-                            </form>
-                            <form action="/machines/delete" method="post" style="display: inline;">
-                                <input type="hidden" name="mac" value="{{ m.mac }}">
-                                <button type="submit">Remove</button>
-                            </form>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <hr>
-        <h2>Add New Machine</h2>
-        <form action="/machines" method="post" id="add-machine-form">
-            <label for="mac">MAC Address:</label>
-            <br>
-            <input type="text" id="mac" name="mac" required size="50">
-            <br>
-            <br>
-            <label for="ip">Machine IP Address:</label>
-            <br>
-            <input type="text" id="ip" name="ip" required size="50">
-            <br>
-            <br>
-            <hr>
-            <h3>TCP Forwarding</h3>
-            <label for="forward_local_port">Local Port:</label>
-            <br>
-            <input type="number" id="forward_local_port" name="forward_local_port">
-            <br>
-            <br>
-            <label for="forward_target_port">Target Port:</label>
-            <br>
-            <input type="number" id="forward_target_port" name="forward_target_port">
-            <br>
-            <br>
-            <input type="submit" value="Add Machine">
-        </form>
+        <script src="https://cdn.tailwindcss.com"></script>
         <script>
-            document.getElementById('scan-btn').addEventListener('click', async () => {
-                const btn = document.getElementById('scan-btn');
-                const resultsContainer = document.getElementById('scan-results-container');
-                const resultsTableBody = document.querySelector('#scan-results-table tbody');
+      // Tailwind config (optional: enables class-based dark mode)
+      tailwind.config = {
+        darkMode: 'media',
+        theme: {
+          extend: {
+            fontFamily: { sans: ['ui-sans-serif', 'system-ui', 'Inter', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'] }
+          }
+        }
+      }
+        </script>
+    </head>
+    <body class="min-h-full bg-gray-50 text-gray-800 antialiased dark:bg-gray-950 dark:text-gray-100">
+        <!-- Page wrapper -->
+        <div class="mx-auto max-w-6xl px-4 py-8">
+            <!-- Header -->
+            <header class="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">WOL Manager</h1>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Wake, manage, and forward to your registered machines.</p>
+                </div>
+                <button id="scan-btn"
+                        class="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-gray-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800">
+                    🔍 Scan Network
+                </button>
+            </header>
+            <!-- Discovered devices -->
+            <section id="scan-results-container" class="hidden">
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-lg font-semibold">Discovered Devices</h2>
+                    <span id="scan-status"
+                          class="text-sm text-gray-500 dark:text-gray-400"
+                          aria-live="polite"></span>
+                </div>
+                <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <table id="scan-results-table" class="min-w-full text-left text-sm">
+                        <thead class="bg-gray-50 text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+                            <tr>
+                                <th class="px-4 py-3 font-semibold">IP Address</th>
+                                <th class="px-4 py-3 font-semibold">MAC Address</th>
+                                <th class="px-4 py-3 font-semibold">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <!-- Registered Machines -->
+            <section class="mt-8">
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-lg font-semibold">Registered Machines</h2>
+                </div>
+                <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <table class="min-w-full text-left text-sm">
+                        <thead class="bg-gray-50 text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+                            <tr>
+                                <th class="px-4 py-3 font-semibold">MAC Address</th>
+                                <th class="px-4 py-3 font-semibold">IP Address</th>
+                                <th class="px-4 py-3 font-semibold">Fwd Local Port</th>
+                                <th class="px-4 py-3 font-semibold">Fwd Target Port</th>
+                                <th class="px-4 py-3 font-semibold">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            {% for m in machines %}
+                                <tr class="align-middle">
+                                    <td class="px-4 py-3 font-mono text-xs sm:text-sm">{{ m.mac }}</td>
+                                    <td class="px-4 py-3 font-mono text-xs sm:text-sm">{{ m.ip }}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="font-mono text-xs sm:text-sm">
+                                            {% if let Some(port) = m.forward_local_port %}
+                                                {{ port }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="font-mono text-xs sm:text-sm">
+                                            {% if let Some(port) = m.forward_target_port %}
+                                                {{ port }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex flex-wrap gap-2">
+                                            <form action="/wol" method="post">
+                                                <input type="hidden" name="mac" value="{{ m.mac }}">
+                                                <button type="submit"
+                                                        class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.99]">
+                                                    ⚡ Wake Up
+                                                </button>
+                                            </form>
+                                            <form action="/machines/delete"
+                                                  method="post"
+                                                  onsubmit="return confirm('Remove this machine?');">
+                                                <input type="hidden" name="mac" value="{{ m.mac }}">
+                                                <button type="submit"
+                                                        class="inline-flex items-center justify-center rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700 active:scale-[0.99]">
+                                                    🗑️ Remove
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <!-- Add Machine -->
+            <section class="mt-10">
+                <h2 class="mb-4 text-lg font-semibold">Add New Machine</h2>
+                <form action="/machines"
+                      method="post"
+                      id="add-machine-form"
+                      class="grid gap-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div class="grid gap-2">
+                        <label for="mac" class="text-sm font-medium">MAC Address</label>
+                        <input type="text"
+                               id="mac"
+                               name="mac"
+                               required
+                               inputmode="text"
+                               placeholder="00:11:22:33:44:55"
+                               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
+                        <p class="text-xs text-gray-500">Formats like 00:11:22:33:44:55 or 001122334455.</p>
+                    </div>
+                    <div class="grid gap-2">
+                        <label for="ip" class="text-sm font-medium">Machine IP Address</label>
+                        <input type="text"
+                               id="ip"
+                               name="ip"
+                               required
+                               inputmode="numeric"
+                               placeholder="192.168.1.42"
+                               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
+                    </div>
+                    <div class="border-t border-dashed border-gray-200 pt-4 dark:border-gray-800">
+                        <h3 class="mb-3 text-base font-semibold">TCP Forwarding (optional)</h3>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="grid gap-2">
+                                <label for="forward_local_port" class="text-sm font-medium">Local Port</label>
+                                <input type="number"
+                                       id="forward_local_port"
+                                       name="forward_local_port"
+                                       min="1"
+                                       max="65535"
+                                       placeholder="e.g. 2222"
+                                       class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
+                            </div>
+                            <div class="grid gap-2">
+                                <label for="forward_target_port" class="text-sm font-medium">Target Port</label>
+                                <input type="number"
+                                       id="forward_target_port"
+                                       name="forward_target_port"
+                                       min="1"
+                                       max="65535"
+                                       placeholder="e.g. 22"
+                                       class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-end gap-3">
+                        <button type="reset"
+                                class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-gray-50 active:scale-[0.99] dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800">
+                            Clear
+                        </button>
+                        <input type="submit"
+                               value="Add Machine"
+                               class="inline-flex cursor-pointer items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]" />
+                    </div>
+                </form>
+            </section>
+        </div>
+        <!-- Scripts -->
+        <script>
+      const scanBtn = document.getElementById('scan-btn');
+      const resultsContainer = document.getElementById('scan-results-container');
+      const resultsTableBody = document.querySelector('#scan-results-table tbody');
+      const scanStatus = document.getElementById('scan-status');
 
-                btn.textContent = 'Scanning...';
-                btn.disabled = true;
-                resultsTableBody.innerHTML = '<tr><td colspan="3">Scanning... This may take a moment.</td></tr>';
-                resultsContainer.style.display = 'block';
+      function showResults() {
+        resultsContainer.classList.remove('hidden');
+      }
 
-                try {
-                    const response = await fetch('/scan');
-                    if (!response.ok) {
-                        throw new Error('Network scan failed');
-                    }
-                    const devices = await response.json();
+      scanBtn.addEventListener('click', async () => {
+        scanBtn.textContent = '🔎 Scanning…';
+        scanBtn.disabled = true;
+        scanStatus.textContent = 'Scanning your network, this may take a moment…';
+        resultsTableBody.innerHTML = '<tr><td colspan="3" class="px-4 py-4 text-gray-500">Scanning…</td></tr>';
+        showResults();
 
-                    resultsTableBody.innerHTML = '';
-                    if (devices.length === 0) {
-                        resultsTableBody.innerHTML = '<tr><td colspan="3">No devices found.</td></tr>';
-                    } else {
-                        devices.forEach(device => {
-                            const row = document.createElement('tr');
-                            row.innerHTML = `
-                                <td>${device.ip}</td>
-                                <td>${device.mac}</td>
-                                <td><button class="add-discovered-btn" data-ip="${device.ip}" data-mac="${device.mac}">Add</button></td>
-                            `;
-                            resultsTableBody.appendChild(row);
-                        });
-                    }
-                } catch (error) {
-                    console.error('Scan error:', error);
-                    resultsTableBody.innerHTML = '<tr><td colspan="3">Error during scan. Check server logs.</td></tr>';
-                } finally {
-                    btn.textContent = 'Scan Network';
-                    btn.disabled = false;
-                }
+        try {
+          const response = await fetch('/scan');
+          if (!response.ok) throw new Error('Network scan failed');
+          const devices = await response.json();
+
+          resultsTableBody.innerHTML = '';
+          if (!devices.length) {
+            resultsTableBody.innerHTML = '<tr><td colspan="3" class="px-4 py-4 text-gray-500">No devices found.</td></tr>';
+          } else {
+            devices.forEach(device => {
+              const row = document.createElement('tr');
+              row.className = 'align-middle';
+              row.innerHTML = `
+                <td class="px-4 py-3 font-mono text-xs sm:text-sm">${device.ip}</td>
+                <td class="px-4 py-3 font-mono text-xs sm:text-sm">${device.mac}</td>
+                <td class="px-4 py-3">
+                  <button class="add-discovered-btn inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.99]" data-ip="${device.ip}" data-mac="${device.mac}">
+                    ➕ Add
+                  </button>
+                </td>`;
+              resultsTableBody.appendChild(row);
             });
+          }
+          scanStatus.textContent = `Found ${devices.length} device${devices.length === 1 ? '' : 's'}.`;
+        } catch (err) {
+          console.error('Scan error:', err);
+          resultsTableBody.innerHTML = '<tr><td colspan="3" class="px-4 py-4 text-rose-600">Error during scan. Check server logs.</td></tr>';
+          scanStatus.textContent = 'Scan failed.';
+        } finally {
+          scanBtn.textContent = '🔍 Scan Network';
+          scanBtn.disabled = false;
+          setTimeout(() => (scanStatus.textContent = ''), 4000);
+        }
+      });
 
-            document.getElementById('scan-results-table').addEventListener('click', (event) => {
-                if (event.target.classList.contains('add-discovered-btn')) {
-                    const btn = event.target;
-                    document.getElementById('ip').value = btn.dataset.ip;
-                    document.getElementById('mac').value = btn.dataset.mac;
-                    document.getElementById('add-machine-form').scrollIntoView({ behavior: 'smooth' });
-                }
-            });
+      document.getElementById('scan-results-table').addEventListener('click', (event) => {
+        if (event.target.classList.contains('add-discovered-btn')) {
+          const btn = event.target;
+          document.getElementById('ip').value = btn.dataset.ip;
+          document.getElementById('mac').value = btn.dataset.mac;
+          document.getElementById('add-machine-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
         </script>
     </body>
 </html>
