@@ -1,8 +1,8 @@
 use axum::{
+    Router,
     extract::{Form, State},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -83,7 +83,7 @@ pub async fn run() {
         .route("/wol", post(wake_machine))
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = TcpListener::bind(addr).await.unwrap();
     println!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
@@ -181,10 +181,7 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
     Html(html_body)
 }
 
-async fn add_machine(
-    State(state): State<AppState>,
-    Form(new_machine): Form<Machine>,
-) -> Redirect {
+async fn add_machine(State(state): State<AppState>, Form(new_machine): Form<Machine>) -> Redirect {
     let mut machines = state.machines.lock().unwrap();
     machines.push(new_machine);
     if let Err(e) = save_machines(&machines) {
