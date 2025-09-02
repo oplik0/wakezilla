@@ -4,6 +4,7 @@ use std::net::{IpAddr, Ipv4Addr};
 
 mod wol;
 mod web;
+mod forward;
 
 /// Simple Wake-on-LAN sender + post-WOL reachability check.
 #[derive(Parser, Debug)]

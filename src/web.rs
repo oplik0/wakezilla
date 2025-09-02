@@ -10,6 +10,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 
+use crate::forward;
 use crate::wol;
 
 const DB_PATH: &str = "machines.json";
@@ -19,12 +20,13 @@ pub struct Machine {
     mac: String,
     ip: Ipv4Addr,
     port: u16,
+    forward_target_port: Option<u16>,
+    forward_local_port: Option<u16>,
 }
 
 #[derive(Deserialize)]
 pub struct WakeForm {
     mac: String,
-    ip: Ipv4Addr,
     port: u16,
 }
 
@@ -49,8 +51,26 @@ fn save_machines(machines: &[Machine]) -> Result<(), std::io::Error> {
 }
 
 pub async fn run() {
+    let initial_machines = load_machines().unwrap_or_default();
+
+    for machine in &initial_machines {
+        if let (Some(local_port), Some(target_port)) =
+            (machine.forward_local_port, machine.forward_target_port)
+        {
+            let remote_addr = SocketAddr::new(machine.ip.into(), target_port);
+            tokio::spawn(async move {
+                if let Err(e) = forward::proxy(local_port, remote_addr).await {
+                    eprintln!(
+                        "Forwarder for {} -> {} failed: {}",
+                        local_port, remote_addr, e
+                    );
+                }
+            });
+        }
+    }
+
     let state = AppState {
-        machines: Arc::new(Mutex::new(load_machines().unwrap_or_default())),
+        machines: Arc::new(Mutex::new(initial_machines)),
     };
 
     let app = Router::new()
@@ -76,10 +96,11 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
                     <td>{}</td>
                     <td>{}</td>
                     <td>{}</td>
+                    <td>{}</td>
+                    <td>{}</td>
                     <td>
                         <form action="/wol" method="post" style="display: inline;">
                             <input type="hidden" name="mac" value="{}">
-                            <input type="hidden" name="ip" value="{}">
                             <input type="hidden" name="port" value="{}">
                             <button type="submit">Wake Up</button>
                         </form>
@@ -89,7 +110,16 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
                         </form>
                     </td>
                 </tr>"#,
-                m.mac, m.ip, m.port, m.mac, m.ip, m.port, m.mac
+                m.mac,
+                m.ip,
+                m.port,
+                m.forward_local_port
+                    .map_or("".to_string(), |p| p.to_string()),
+                m.forward_target_port
+                    .map_or("".to_string(), |p| p.to_string()),
+                m.mac,
+                m.port,
+                m.mac
             )
         })
         .collect();
@@ -108,7 +138,9 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
                         <tr>
                             <th>MAC Address</th>
                             <th>IP Address</th>
-                            <th>Port</th>
+                            <th>WOL Port</th>
+                            <th>Fwd Local Port</th>
+                            <th>Fwd Target Port</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -122,11 +154,18 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
                     <label for="mac">MAC Address:</label><br>
                     <input type="text" id="mac" name="mac" required size="50"><br><br>
 
-                    <label for="ip">Broadcast IP Address:</label><br>
+                    <label for="ip">Machine IP Address:</label><br>
                     <input type="text" id="ip" name="ip" required size="50"><br><br>
 
-                    <label for="port">Port:</label><br>
+                    <label for="port">WOL Port:</label><br>
                     <input type="number" id="port" name="port" required value="9"><br><br>
+
+                    <hr>
+                    <h3>TCP Forwarding (optional)</h3>
+                    <label for="forward_local_port">Local Port:</label><br>
+                    <input type="number" id="forward_local_port" name="forward_local_port"><br><br>
+                    <label for="forward_target_port">Target Port:</label><br>
+                    <input type="number" id="forward_target_port" name="forward_target_port"><br><br>
 
                     <input type="submit" value="Add Machine">
                 </form>
@@ -171,7 +210,7 @@ async fn wake_machine(Form(payload): Form<WakeForm>) -> impl IntoResponse {
         }
     };
 
-    let bcast = payload.ip;
+    let bcast = Ipv4Addr::new(255, 255, 255, 255);
     let port = payload.port;
     let count = 3;
 
