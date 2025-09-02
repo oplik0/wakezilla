@@ -14,4 +14,5 @@ askama = "0.12"
 askama_axum = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-regex = "1"
+ipnetwork = "0.20.0"
+pnet = "0.34.0"
