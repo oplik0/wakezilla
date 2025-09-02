@@ -24,7 +24,6 @@ const DB_PATH: &str = "machines.json";
 pub struct Machine {
     mac: String,
     ip: Ipv4Addr,
-    port: u16,
     forward_target_port: Option<u16>,
     forward_local_port: Option<u16>,
 }
@@ -32,7 +31,6 @@ pub struct Machine {
 #[derive(Deserialize)]
 pub struct WakeForm {
     mac: String,
-    port: u16,
 }
 
 #[derive(Deserialize)]
@@ -68,7 +66,7 @@ fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
     {
         let remote_addr = SocketAddr::new(machine.ip.into(), target_port);
         let mac_str = machine.mac.clone();
-        let wol_port = machine.port;
+        let wol_port = 9; // Default WOL port
 
         let (tx, rx) = watch::channel(true);
         state
@@ -166,7 +164,7 @@ async fn wake_machine(Form(payload): Form<WakeForm>) -> impl IntoResponse {
     };
 
     let bcast = Ipv4Addr::new(255, 255, 255, 255);
-    let port = payload.port;
+    let port = 9; // Default WOL port
     let count = 3;
 
     match wol::send_packets(&mac, bcast, port, count) {

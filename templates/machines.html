@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
     <head>
         <title>WOL Manager</title>
@@ -26,7 +26,6 @@
                 <tr>
                     <th>MAC Address</th>
                     <th>IP Address</th>
-                    <th>WOL Port</th>
                     <th>Fwd Local Port</th>
                     <th>Fwd Target Port</th>
                     <th>Action</th>
@@ -34,49 +33,56 @@
             </thead>
             <tbody>
                 {% for m in machines %}
-                <tr>
-                    <td>{{ m.mac }}</td>
-                    <td>{{ m.ip }}</td>
-                    <td>{{ m.port }}</td>
-                    <td>{% if let Some(port) = m.forward_local_port %}{{ port }}{% endif %}</td>
-                    <td>{% if let Some(port) = m.forward_target_port %}{{ port }}{% endif %}</td>
-                    <td>
-                        <form action="/wol" method="post" style="display: inline;">
-                            <input type="hidden" name="mac" value="{{ m.mac }}">
-                            <input type="hidden" name="port" value="{{ m.port }}">
-                            <button type="submit">Wake Up</button>
-                        </form>
-                        <form action="/machines/delete" method="post" style="display: inline;">
-                            <input type="hidden" name="mac" value="{{ m.mac }}">
-                            <button type="submit">Remove</button>
-                        </form>
-                    </td>
-                </tr>
+                    <tr>
+                        <td>{{ m.mac }}</td>
+                        <td>{{ m.ip }}</td>
+                        <td>
+                            {% if let Some(port) = m.forward_local_port %}{{ port }}{% endif %}
+                        </td>
+                        <td>
+                            {% if let Some(port) = m.forward_target_port %}{{ port }}{% endif %}
+                        </td>
+                        <td>
+                            <form action="/wol" method="post" style="display: inline;">
+                                <input type="hidden" name="mac" value="{{ m.mac }}">
+                                <button type="submit">Wake Up</button>
+                            </form>
+                            <form action="/machines/delete" method="post" style="display: inline;">
+                                <input type="hidden" name="mac" value="{{ m.mac }}">
+                                <button type="submit">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
                 {% endfor %}
             </tbody>
         </table>
         <hr>
         <h2>Add New Machine</h2>
         <form action="/machines" method="post" id="add-machine-form">
-            <label for="mac">MAC Address:</label><br>
-            <input type="text" id="mac" name="mac" required size="50"><br><br>
-
-            <label for="ip">Machine IP Address:</label><br>
-            <input type="text" id="ip" name="ip" required size="50"><br><br>
-
-            <label for="port">WOL Port:</label><br>
-            <input type="number" id="port" name="port" required value="9"><br><br>
-
+            <label for="mac">MAC Address:</label>
+            <br>
+            <input type="text" id="mac" name="mac" required size="50">
+            <br>
+            <br>
+            <label for="ip">Machine IP Address:</label>
+            <br>
+            <input type="text" id="ip" name="ip" required size="50">
+            <br>
+            <br>
             <hr>
-            <h3>TCP Forwarding (optional)</h3>
-            <label for="forward_local_port">Local Port:</label><br>
-            <input type="number" id="forward_local_port" name="forward_local_port"><br><br>
-            <label for="forward_target_port">Target Port:</label><br>
-            <input type="number" id="forward_target_port" name="forward_target_port"><br><br>
-
+            <h3>TCP Forwarding</h3>
+            <label for="forward_local_port">Local Port:</label>
+            <br>
+            <input type="number" id="forward_local_port" name="forward_local_port">
+            <br>
+            <br>
+            <label for="forward_target_port">Target Port:</label>
+            <br>
+            <input type="number" id="forward_target_port" name="forward_target_port">
+            <br>
+            <br>
             <input type="submit" value="Add Machine">
         </form>
-
         <script>
             document.getElementById('scan-btn').addEventListener('click', async () => {
                 const btn = document.getElementById('scan-btn');
