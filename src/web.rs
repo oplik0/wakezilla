@@ -1,26 +1,45 @@
 use axum::{
-    extract::Form,
-    response::{Html, IntoResponse},
+    extract::{Form, State},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
 };
 use serde::Deserialize;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 
 use crate::wol;
 
-#[derive(Deserialize)]
-pub struct WolForm {
+#[derive(Deserialize, Clone, Debug)]
+pub struct Machine {
     mac: String,
-    ip: Option<Ipv4Addr>,
-    port: Option<u16>,
+    ip: Ipv4Addr,
+    port: u16,
+}
+
+#[derive(Deserialize)]
+pub struct WakeForm {
+    mac: String,
+    ip: Ipv4Addr,
+    port: u16,
+}
+
+#[derive(Clone)]
+struct AppState {
+    machines: Arc<Mutex<Vec<Machine>>>,
 }
 
 pub async fn run() {
+    let state = AppState {
+        machines: Arc::new(Mutex::new(vec![])),
+    };
+
     let app = Router::new()
-        .route("/", get(root))
-        .route("/wol", post(wol_post));
+        .route("/", get(show_machines))
+        .route("/machines", post(add_machine))
+        .route("/wol", post(wake_machine))
+        .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -28,38 +47,85 @@ pub async fn run() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn root() -> Html<&'static str> {
-    Html(
+async fn show_machines(State(state): State<AppState>) -> Html<String> {
+    let machines = state.machines.lock().unwrap();
+    let machine_rows: String = machines
+        .iter()
+        .map(|m| {
+            format!(
+                r#"<tr>
+                    <td>{}</td>
+                    <td>{}</td>
+                    <td>{}</td>
+                    <td>
+                        <form action="/wol" method="post">
+                            <input type="hidden" name="mac" value="{}">
+                            <input type="hidden" name="ip" value="{}">
+                            <input type="hidden" name="port" value="{}">
+                            <button type="submit">Wake Up</button>
+                        </form>
+                    </td>
+                </tr>"#,
+                m.mac, m.ip, m.port, m.mac, m.ip, m.port
+            )
+        })
+        .collect();
+
+    let html_body = format!(
         r#"
         <!doctype html>
         <html>
             <head>
-                <title>Wake-on-LAN</title>
+                <title>WOL Manager</title>
             </head>
             <body>
-                <h1>Wake-on-LAN</h1>
-                <form action="/wol" method="post">
+                <h1>Registered Machines</h1>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>MAC Address</th>
+                            <th>IP Address</th>
+                            <th>Port</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {}
+                    </tbody>
+                </table>
+                <hr>
+                <h2>Add New Machine</h2>
+                <form action="/machines" method="post">
                     <label for="mac">MAC Address:</label><br>
-                    <input type="text" id="mac" name="mac" required size="50"><br>
-                    <small>Formats: 00:11:22:33:44:55, 00-11-22-33-44-55, 001122334455</small><br><br>
-                    
-                    <label for="ip">Broadcast IP (optional):</label><br>
-                    <input type="text" id="ip" name="ip" size="50"><br>
-                    <small>Default: 255.255.255.255</small><br><br>
+                    <input type="text" id="mac" name="mac" required size="50"><br><br>
 
-                    <label for="port">Port (optional):</label><br>
-                    <input type="number" id="port" name="port"><br>
-                    <small>Default: 9</small><br><br>
+                    <label for="ip">Broadcast IP Address:</label><br>
+                    <input type="text" id="ip" name="ip" required size="50"><br><br>
 
-                    <input type="submit" value="Send WOL Packet">
+                    <label for="port">Port:</label><br>
+                    <input type="number" id="port" name="port" required value="9"><br><br>
+
+                    <input type="submit" value="Add Machine">
                 </form>
             </body>
         </html>
     "#,
-    )
+        machine_rows
+    );
+
+    Html(html_body)
 }
 
-async fn wol_post(Form(payload): Form<WolForm>) -> impl IntoResponse {
+async fn add_machine(
+    State(state): State<AppState>,
+    Form(new_machine): Form<Machine>,
+) -> Redirect {
+    let mut machines = state.machines.lock().unwrap();
+    machines.push(new_machine);
+    Redirect::to("/")
+}
+
+async fn wake_machine(Form(payload): Form<WakeForm>) -> impl IntoResponse {
     let mac = match wol::parse_mac(&payload.mac) {
         Ok(mac) => mac,
         Err(e) => {
@@ -67,8 +133,8 @@ async fn wol_post(Form(payload): Form<WolForm>) -> impl IntoResponse {
         }
     };
 
-    let bcast = payload.ip.unwrap_or(Ipv4Addr::new(255, 255, 255, 255));
-    let port = payload.port.unwrap_or(9);
+    let bcast = payload.ip;
+    let port = payload.port;
     let count = 3;
 
     match wol::send_packets(&mac, bcast, port, count) {
