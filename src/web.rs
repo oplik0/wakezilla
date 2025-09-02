@@ -50,26 +50,30 @@ fn save_machines(machines: &[Machine]) -> Result<(), std::io::Error> {
     fs::write(DB_PATH, data)
 }
 
+fn start_proxy_if_configured(machine: &Machine) {
+    if let (Some(local_port), Some(target_port)) =
+        (machine.forward_local_port, machine.forward_target_port)
+    {
+        let remote_addr = SocketAddr::new(machine.ip.into(), target_port);
+        let mac_str = machine.mac.clone();
+        let wol_port = machine.port;
+
+        tokio::spawn(async move {
+            if let Err(e) = forward::proxy(local_port, remote_addr, mac_str, wol_port).await {
+                eprintln!(
+                    "Forwarder for {} -> {} failed: {}",
+                    local_port, remote_addr, e
+                );
+            }
+        });
+    }
+}
+
 pub async fn run() {
     let initial_machines = load_machines().unwrap_or_default();
 
     for machine in &initial_machines {
-        if let (Some(local_port), Some(target_port)) =
-            (machine.forward_local_port, machine.forward_target_port)
-        {
-            let remote_addr = SocketAddr::new(machine.ip.into(), target_port);
-            let mac_str = machine.mac.clone();
-            let wol_port = machine.port;
-
-            tokio::spawn(async move {
-                if let Err(e) = forward::proxy(local_port, remote_addr, mac_str, wol_port).await {
-                    eprintln!(
-                        "Forwarder for {} -> {} failed: {}",
-                        local_port, remote_addr, e
-                    );
-                }
-            });
-        }
+        start_proxy_if_configured(machine);
     }
 
     let state = AppState {
@@ -182,6 +186,7 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
 }
 
 async fn add_machine(State(state): State<AppState>, Form(new_machine): Form<Machine>) -> Redirect {
+    start_proxy_if_configured(&new_machine);
     let mut machines = state.machines.lock().unwrap();
     machines.push(new_machine);
     if let Err(e) = save_machines(&machines) {
