@@ -95,7 +95,7 @@
                                     </td>
                                     <td class="px-4 py-3">
                                         <div class="flex flex-wrap gap-2">
-                                            <form action="/wol" method="post">
+                                            <form action="/wol" method="post" class="wol-form">
                                                 <input type="hidden" name="mac" value="{{ m.mac }}">
                                                 <button type="submit"
                                                         class="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.99]">
@@ -244,6 +244,35 @@
           document.getElementById('mac').value = btn.dataset.mac;
           document.getElementById('add-machine-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+      });
+
+      document.querySelectorAll('.wol-form').forEach(form => {
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const button = form.querySelector('button[type="submit"]');
+          const originalText = button.innerHTML;
+          button.innerHTML = '⚡ Sending…';
+          button.disabled = true;
+
+          try {
+            const formData = new FormData(form);
+            const response = await fetch(form.action, {
+              method: form.method,
+              body: new URLSearchParams(formData)
+            });
+            const responseText = await response.text();
+            if (!response.ok) {
+              throw new Error(responseText);
+            }
+            alert(responseText);
+          } catch (error) {
+            console.error('WOL error:', error);
+            alert(`Error: ${error.message}`);
+          } finally {
+            button.innerHTML = originalText;
+            button.disabled = false;
+          }
+        });
       });
         </script>
     </body>

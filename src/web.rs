@@ -155,11 +155,14 @@ async fn delete_machine(
     Redirect::to("/")
 }
 
-async fn wake_machine(Form(payload): Form<WakeForm>) -> impl IntoResponse {
+async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode, String) {
     let mac = match wol::parse_mac(&payload.mac) {
         Ok(mac) => mac,
         Err(e) => {
-            return format!("Invalid MAC address '{}': {}", payload.mac, e);
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("Invalid MAC address '{}': {}", payload.mac, e),
+            );
         }
     };
 
@@ -168,7 +171,13 @@ async fn wake_machine(Form(payload): Form<WakeForm>) -> impl IntoResponse {
     let count = 3;
 
     match wol::send_packets(&mac, bcast, port, count) {
-        Ok(_) => format!("Sent WOL packet to {}", payload.mac),
-        Err(e) => format!("Failed to send WOL packet: {}", e),
+        Ok(_) => (
+            axum::http::StatusCode::OK,
+            format!("Sent WOL packet to {}", payload.mac),
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to send WOL packet: {}", e),
+        ),
     }
 }
