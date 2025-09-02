@@ -4,14 +4,17 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 
 use crate::wol;
 
-#[derive(Deserialize, Clone, Debug)]
+const DB_PATH: &str = "machines.json";
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Machine {
     mac: String,
     ip: Ipv4Addr,
@@ -30,9 +33,19 @@ struct AppState {
     machines: Arc<Mutex<Vec<Machine>>>,
 }
 
+fn load_machines() -> Result<Vec<Machine>, std::io::Error> {
+    let data = fs::read_to_string(DB_PATH)?;
+    serde_json::from_str(&data).map_err(|e| e.into())
+}
+
+fn save_machines(machines: &[Machine]) -> Result<(), std::io::Error> {
+    let data = serde_json::to_string_pretty(machines)?;
+    fs::write(DB_PATH, data)
+}
+
 pub async fn run() {
     let state = AppState {
-        machines: Arc::new(Mutex::new(vec![])),
+        machines: Arc::new(Mutex::new(load_machines().unwrap_or_default())),
     };
 
     let app = Router::new()
@@ -122,6 +135,9 @@ async fn add_machine(
 ) -> Redirect {
     let mut machines = state.machines.lock().unwrap();
     machines.push(new_machine);
+    if let Err(e) = save_machines(&machines) {
+        eprintln!("Error saving machines: {}", e);
+    }
     Redirect::to("/")
 }
 
