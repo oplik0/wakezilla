@@ -28,6 +28,11 @@ pub struct WakeForm {
     port: u16,
 }
 
+#[derive(Deserialize)]
+pub struct DeleteForm {
+    mac: String,
+}
+
 #[derive(Clone)]
 struct AppState {
     machines: Arc<Mutex<Vec<Machine>>>,
@@ -51,6 +56,7 @@ pub async fn run() {
     let app = Router::new()
         .route("/", get(show_machines))
         .route("/machines", post(add_machine))
+        .route("/machines/delete", post(delete_machine))
         .route("/wol", post(wake_machine))
         .with_state(state);
 
@@ -71,15 +77,19 @@ async fn show_machines(State(state): State<AppState>) -> Html<String> {
                     <td>{}</td>
                     <td>{}</td>
                     <td>
-                        <form action="/wol" method="post">
+                        <form action="/wol" method="post" style="display: inline;">
                             <input type="hidden" name="mac" value="{}">
                             <input type="hidden" name="ip" value="{}">
                             <input type="hidden" name="port" value="{}">
                             <button type="submit">Wake Up</button>
                         </form>
+                        <form action="/machines/delete" method="post" style="display: inline;">
+                            <input type="hidden" name="mac" value="{}">
+                            <button type="submit">Remove</button>
+                        </form>
                     </td>
                 </tr>"#,
-                m.mac, m.ip, m.port, m.mac, m.ip, m.port
+                m.mac, m.ip, m.port, m.mac, m.ip, m.port, m.mac
             )
         })
         .collect();
@@ -135,6 +145,18 @@ async fn add_machine(
 ) -> Redirect {
     let mut machines = state.machines.lock().unwrap();
     machines.push(new_machine);
+    if let Err(e) = save_machines(&machines) {
+        eprintln!("Error saving machines: {}", e);
+    }
+    Redirect::to("/")
+}
+
+async fn delete_machine(
+    State(state): State<AppState>,
+    Form(payload): Form<DeleteForm>,
+) -> Redirect {
+    let mut machines = state.machines.lock().unwrap();
+    machines.retain(|m| m.mac != payload.mac);
     if let Err(e) = save_machines(&machines) {
         eprintln!("Error saving machines: {}", e);
     }
