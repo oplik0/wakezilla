@@ -1,7 +1,7 @@
 use askama_axum::Template;
 use axum::{
     extract::{Form, State},
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Json, Redirect},
     routing::{get, post},
     Router,
 };
@@ -15,6 +15,7 @@ use tokio::sync::watch;
 use tracing::{error, info};
 
 use crate::forward;
+use crate::scanner;
 use crate::wol;
 
 const DB_PATH: &str = "machines.json";
@@ -101,6 +102,7 @@ pub async fn run() {
 
     let app = Router::new()
         .route("/", get(show_machines))
+        .route("/scan", get(scan_network_handler))
         .route("/machines", post(add_machine))
         .route("/machines/delete", post(delete_machine))
         .route("/wol", post(wake_machine))
@@ -110,6 +112,16 @@ pub async fn run() {
     let listener = TcpListener::bind(addr).await.unwrap();
     info!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn scan_network_handler() -> impl IntoResponse {
+    match scanner::scan_network().await {
+        Ok(devices) => Ok(Json(devices)),
+        Err(e) => {
+            error!("Network scan failed: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {

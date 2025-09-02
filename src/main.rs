@@ -4,6 +4,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use tracing::{error, info};
 
 mod forward;
+mod scanner;
 mod web;
 mod wol;
 
