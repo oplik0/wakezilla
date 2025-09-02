@@ -1,8 +1,9 @@
+use askama_axum::Template;
 use axum::{
-    Router,
     extract::{Form, State},
-    response::{Html, IntoResponse, Redirect},
+    response::{IntoResponse, Redirect},
     routing::{get, post},
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -33,6 +34,12 @@ pub struct WakeForm {
 #[derive(Deserialize)]
 pub struct DeleteForm {
     mac: String,
+}
+
+#[derive(Template)]
+#[template(path = "machines.html")]
+struct MachinesTemplate {
+    machines: Vec<Machine>,
 }
 
 #[derive(Clone)]
@@ -93,96 +100,9 @@ pub async fn run() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn show_machines(State(state): State<AppState>) -> Html<String> {
-    let machines = state.machines.lock().unwrap();
-    let machine_rows: String = machines
-        .iter()
-        .map(|m| {
-            format!(
-                r#"<tr>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>
-                        <form action="/wol" method="post" style="display: inline;">
-                            <input type="hidden" name="mac" value="{}">
-                            <input type="hidden" name="port" value="{}">
-                            <button type="submit">Wake Up</button>
-                        </form>
-                        <form action="/machines/delete" method="post" style="display: inline;">
-                            <input type="hidden" name="mac" value="{}">
-                            <button type="submit">Remove</button>
-                        </form>
-                    </td>
-                </tr>"#,
-                m.mac,
-                m.ip,
-                m.port,
-                m.forward_local_port
-                    .map_or("".to_string(), |p| p.to_string()),
-                m.forward_target_port
-                    .map_or("".to_string(), |p| p.to_string()),
-                m.mac,
-                m.port,
-                m.mac
-            )
-        })
-        .collect();
-
-    let html_body = format!(
-        r#"
-        <!doctype html>
-        <html>
-            <head>
-                <title>WOL Manager</title>
-            </head>
-            <body>
-                <h1>Registered Machines</h1>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>MAC Address</th>
-                            <th>IP Address</th>
-                            <th>WOL Port</th>
-                            <th>Fwd Local Port</th>
-                            <th>Fwd Target Port</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {}
-                    </tbody>
-                </table>
-                <hr>
-                <h2>Add New Machine</h2>
-                <form action="/machines" method="post">
-                    <label for="mac">MAC Address:</label><br>
-                    <input type="text" id="mac" name="mac" required size="50"><br><br>
-
-                    <label for="ip">Machine IP Address:</label><br>
-                    <input type="text" id="ip" name="ip" required size="50"><br><br>
-
-                    <label for="port">WOL Port:</label><br>
-                    <input type="number" id="port" name="port" required value="9"><br><br>
-
-                    <hr>
-                    <h3>TCP Forwarding (optional)</h3>
-                    <label for="forward_local_port">Local Port:</label><br>
-                    <input type="number" id="forward_local_port" name="forward_local_port"><br><br>
-                    <label for="forward_target_port">Target Port:</label><br>
-                    <input type="number" id="forward_target_port" name="forward_target_port"><br><br>
-
-                    <input type="submit" value="Add Machine">
-                </form>
-            </body>
-        </html>
-    "#,
-        machine_rows
-    );
-
-    Html(html_body)
+async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
+    let machines = state.machines.lock().unwrap().clone();
+    MachinesTemplate { machines }
 }
 
 async fn add_machine(State(state): State<AppState>, Form(new_machine): Form<Machine>) -> Redirect {
