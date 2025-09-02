@@ -65,6 +65,7 @@
                             <tr>
                                 <th class="px-4 py-3 font-semibold">MAC Address</th>
                                 <th class="px-4 py-3 font-semibold">IP Address</th>
+                                <th class="px-4 py-3 font-semibold">Description</th>
                                 <th class="px-4 py-3 font-semibold">Fwd Local Port</th>
                                 <th class="px-4 py-3 font-semibold">Fwd Target Port</th>
                                 <th class="px-4 py-3 font-semibold">Action</th>
@@ -75,6 +76,19 @@
                                 <tr class="align-middle">
                                     <td class="px-4 py-3 font-mono text-xs sm:text-sm">{{ m.mac }}</td>
                                     <td class="px-4 py-3 font-mono text-xs sm:text-sm">{{ m.ip }}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-xs sm:text-sm">
+                                            {% if let Some(desc) = m.description.as_deref() %}
+                                                {% if !desc.is_empty() %}
+                                                    {{ desc }}
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </span>
+                                    </td>
                                     <td class="px-4 py-3">
                                         <span class="font-mono text-xs sm:text-sm">
                                             {% if let Some(port) = m.forward_local_port %}
@@ -146,6 +160,14 @@
                                inputmode="numeric"
                                placeholder="192.168.1.42"
                                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
+                    </div>
+                    <div class="grid gap-2">
+                        <label for="description" class="text-sm font-medium">Description (optional)</label>
+                        <input type="text"
+                               id="description"
+                               name="description"
+                               placeholder="e.g. My Gaming PC"
+                               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
                     </div>
                     <div class="border-t border-dashed border-gray-200 pt-4 dark:border-gray-800">
                         <h3 class="mb-3 text-base font-semibold">TCP Forwarding (optional)</h3>

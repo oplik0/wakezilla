@@ -24,6 +24,7 @@ const DB_PATH: &str = "machines.json";
 pub struct Machine {
     mac: String,
     ip: Ipv4Addr,
+    description: Option<String>,
     forward_target_port: Option<u16>,
     forward_local_port: Option<u16>,
 }
@@ -86,7 +87,7 @@ fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
     }
 }
 
-pub async fn run() {
+pub async fn run(port: u16) {
     let initial_machines = load_machines().unwrap_or_default();
 
     let state = AppState {
@@ -106,7 +107,7 @@ pub async fn run() {
         .route("/wol", post(wake_machine))
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await.unwrap();
     info!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();

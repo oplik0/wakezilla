@@ -21,7 +21,15 @@ enum Commands {
     /// Send WOL packet via CLI
     Send(SendArgs),
     /// Start web server to send WOL packets
-    Serve,
+    Serve(ServeArgs),
+}
+
+#[derive(Parser, Debug)]
+#[command()]
+struct ServeArgs {
+    /// Port to listen on for the web server
+    #[arg(short, long, default_value_t = 3000)]
+    port: u16,
 }
 
 #[derive(Parser, Debug)]
@@ -105,8 +113,8 @@ async fn main() -> io::Result<()> {
                 }
             }
         }
-        Commands::Serve => {
-            web::run().await;
+        Commands::Serve(args) => {
+            web::run(args.port).await;
         }
     }
 
