@@ -6,10 +6,13 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
+use tokio::sync::watch;
+use tracing::{error, info};
 
 use crate::forward;
 use crate::wol;
@@ -45,6 +48,7 @@ struct MachinesTemplate {
 #[derive(Clone)]
 struct AppState {
     machines: Arc<Mutex<Vec<Machine>>>,
+    proxies: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
 }
 
 fn load_machines() -> Result<Vec<Machine>, std::io::Error> {
@@ -57,7 +61,7 @@ fn save_machines(machines: &[Machine]) -> Result<(), std::io::Error> {
     fs::write(DB_PATH, data)
 }
 
-fn start_proxy_if_configured(machine: &Machine) {
+fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
     if let (Some(local_port), Some(target_port)) =
         (machine.forward_local_port, machine.forward_target_port)
     {
@@ -65,9 +69,16 @@ fn start_proxy_if_configured(machine: &Machine) {
         let mac_str = machine.mac.clone();
         let wol_port = machine.port;
 
+        let (tx, rx) = watch::channel(true);
+        state
+            .proxies
+            .lock()
+            .unwrap()
+            .insert(mac_str.clone(), tx);
+
         tokio::spawn(async move {
-            if let Err(e) = forward::proxy(local_port, remote_addr, mac_str, wol_port).await {
-                eprintln!(
+            if let Err(e) = forward::proxy(local_port, remote_addr, mac_str, wol_port, rx).await {
+                error!(
                     "Forwarder for {} -> {} failed: {}",
                     local_port, remote_addr, e
                 );
@@ -79,13 +90,14 @@ fn start_proxy_if_configured(machine: &Machine) {
 pub async fn run() {
     let initial_machines = load_machines().unwrap_or_default();
 
-    for machine in &initial_machines {
-        start_proxy_if_configured(machine);
-    }
-
     let state = AppState {
-        machines: Arc::new(Mutex::new(initial_machines)),
+        machines: Arc::new(Mutex::new(initial_machines.clone())),
+        proxies: Arc::new(Mutex::new(HashMap::new())),
     };
+
+    for machine in &initial_machines {
+        start_proxy_if_configured(machine, &state);
+    }
 
     let app = Router::new()
         .route("/", get(show_machines))
@@ -96,7 +108,7 @@ pub async fn run() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = TcpListener::bind(addr).await.unwrap();
-    println!("listening on http://{}", listener.local_addr().unwrap());
+    info!("listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -106,11 +118,11 @@ async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn add_machine(State(state): State<AppState>, Form(new_machine): Form<Machine>) -> Redirect {
-    start_proxy_if_configured(&new_machine);
+    start_proxy_if_configured(&new_machine, &state);
     let mut machines = state.machines.lock().unwrap();
     machines.push(new_machine);
     if let Err(e) = save_machines(&machines) {
-        eprintln!("Error saving machines: {}", e);
+        error!("Error saving machines: {}", e);
     }
     Redirect::to("/")
 }
@@ -119,10 +131,16 @@ async fn delete_machine(
     State(state): State<AppState>,
     Form(payload): Form<DeleteForm>,
 ) -> Redirect {
+    if let Some(tx) = state.proxies.lock().unwrap().remove(&payload.mac) {
+        if tx.send(false).is_ok() {
+            info!("Sent stop signal to proxy for MAC: {}", payload.mac);
+        }
+    }
+
     let mut machines = state.machines.lock().unwrap();
     machines.retain(|m| m.mac != payload.mac);
     if let Err(e) = save_machines(&machines) {
-        eprintln!("Error saving machines: {}", e);
+        error!("Error saving machines: {}", e);
     }
     Redirect::to("/")
 }

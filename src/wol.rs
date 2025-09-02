@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream, UdpSocket};
 use std::time::{Duration, Instant};
+use tracing::{info, warn};
 
 /// Send WOL magic packets.
 pub fn send_packets(
@@ -37,24 +38,23 @@ pub fn check_host(
     let deadline = Instant::now() + Duration::from_secs(wait_secs);
     let target = SocketAddr::new(ip, check_tcp_port);
 
-    eprint!(
-        "Waiting up to {}s for {}:{} ... ",
+    info!(
+        "Waiting up to {}s for {}:{} ...",
         wait_secs, ip, check_tcp_port
     );
 
     loop {
         if tcp_check(target, connect_timeout) {
-            eprintln!("UP ✅");
+            info!("Host {}:{} is UP ✅", ip, check_tcp_port);
             return true;
         }
 
         if Instant::now() >= deadline {
-            eprintln!("TIMEOUT ❌ (host did not become reachable)");
+            warn!("TIMEOUT ❌ waiting for {}:{}", ip, check_tcp_port);
             return false;
         }
 
         std::thread::sleep(poll_every);
-        eprint!("."); // progress dots
     }
 }
 

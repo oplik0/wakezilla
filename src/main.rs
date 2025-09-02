@@ -1,10 +1,11 @@
 use clap::{Parser, Subcommand};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
+use tracing::{error, info};
 
-mod wol;
-mod web;
 mod forward;
+mod web;
+mod wol;
 
 /// Simple Wake-on-LAN sender + post-WOL reachability check.
 #[derive(Parser, Debug)]
@@ -63,12 +64,20 @@ struct SendArgs {
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stdout)
+        .with_env_filter(env_filter)
+        .init();
+
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Send(args) => {
             let mac = wol::parse_mac(&args.mac).unwrap_or_else(|e| {
-                eprintln!("Invalid MAC '{}': {}", args.mac, e);
+                error!("Invalid MAC '{}': {}", args.mac, e);
                 std::process::exit(2);
             });
 
@@ -76,7 +85,7 @@ async fn main() -> io::Result<()> {
 
             wol::send_packets(&mac, bcast, args.port, args.count)?;
 
-            println!(
+            info!(
                 "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], bcast, args.port
             );
@@ -102,4 +111,3 @@ async fn main() -> io::Result<()> {
 
     Ok(())
 }
-
