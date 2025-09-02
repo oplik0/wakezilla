@@ -1,3 +1,5 @@
+use dns_lookup;
+use futures_util::future::join_all;
 use ipnetwork::IpNetwork;
 use pnet::datalink::{self, Channel, Config, NetworkInterface as PnetNetworkInterface};
 use pnet::packet::arp::{ArpHardwareTypes, ArpOperations, ArpPacket, MutableArpPacket};
@@ -13,6 +15,7 @@ use tracing::{info, warn};
 pub struct DiscoveredDevice {
     pub ip: String,
     pub mac: String,
+    pub hostname: Option<String>,
 }
 
 pub async fn scan_network() -> Result<Vec<DiscoveredDevice>, String> {
@@ -47,11 +50,28 @@ pub async fn scan_network() -> Result<Vec<DiscoveredDevice>, String> {
         .mac
         .ok_or_else(|| "Interface has no MAC address".to_string())?;
 
-    let discovered_devices = tokio::task::spawn_blocking(move || {
+    let discovered_devices_no_hostname = tokio::task::spawn_blocking(move || {
         scan_with_pnet(pnet_iface, network, source_ip, source_mac)
     })
     .await
     .map_err(|e| e.to_string())??;
+
+    let lookups = discovered_devices_no_hostname
+        .into_iter()
+        .map(|mut device| {
+            tokio::spawn(async move {
+                if let Ok(ip_addr) = device.ip.parse::<IpAddr>() {
+                    device.hostname = dns_lookup::lookup_addr(&ip_addr).ok();
+                }
+                device
+            })
+        });
+
+    let discovered_devices = join_all(lookups)
+        .await
+        .into_iter()
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>();
 
     info!(
         "Network scan finished. Found {} devices.",
@@ -72,7 +92,7 @@ fn scan_with_pnet(
     };
 
     let mut config = Config::default();
-    config.read_timeout = Some(Duration::from_secs(1));
+    config.read_timeout = Some(Duration::from_secs(2));
 
     let (mut tx, mut rx) = match datalink::channel(&interface, config) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
@@ -114,13 +134,13 @@ fn scan_with_pnet(
 
         tx.send_to(ethernet_packet.packet(), None);
     }
-    
+
     // Drop sender to allow receiver to unblock on some platforms
     drop(tx);
 
     let mut devices = Vec::new();
     let start_time = std::time::Instant::now();
-    let scan_duration = Duration::from_secs(3);
+    let scan_duration = Duration::from_secs(5);
 
     while start_time.elapsed() < scan_duration {
         match rx.next() {
@@ -131,10 +151,8 @@ fn scan_with_pnet(
                             if arp_packet.get_operation() == ArpOperations::Reply {
                                 let device = DiscoveredDevice {
                                     ip: arp_packet.get_sender_proto_addr().to_string(),
-                                    mac: arp_packet
-                                        .get_sender_hw_addr()
-                                        .to_string()
-                                        .to_uppercase(),
+                                    mac: arp_packet.get_sender_hw_addr().to_string().to_uppercase(),
+                                    hostname: None,
                                 };
                                 if !devices
                                     .iter()

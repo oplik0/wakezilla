@@ -45,6 +45,7 @@
                         <thead class="bg-gray-50 text-gray-600 dark:bg-gray-950 dark:text-gray-300">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">IP Address</th>
+                                <th class="px-4 py-3 font-semibold">Hostname</th>
                                 <th class="px-4 py-3 font-semibold">MAC Address</th>
                                 <th class="px-4 py-3 font-semibold">Action</th>
                             </tr>
@@ -238,9 +239,10 @@
               row.className = 'align-middle';
               row.innerHTML = `
                 <td class="px-4 py-3 font-mono text-xs sm:text-sm">${device.ip}</td>
+                <td class="px-4 py-3 text-xs sm:text-sm">${device.hostname || '-'}</td>
                 <td class="px-4 py-3 font-mono text-xs sm:text-sm">${device.mac}</td>
                 <td class="px-4 py-3">
-                  <button class="add-discovered-btn inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.99]" data-ip="${device.ip}" data-mac="${device.mac}">
+                  <button class="add-discovered-btn inline-flex items-center justify-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.99]" data-ip="${device.ip}" data-mac="${device.mac}" data-hostname="${device.hostname || ''}">
                     ➕ Add
                   </button>
                 </td>`;
@@ -264,6 +266,7 @@
           const btn = event.target;
           document.getElementById('ip').value = btn.dataset.ip;
           document.getElementById('mac').value = btn.dataset.mac;
+          document.getElementById('description').value = btn.dataset.hostname;
           document.getElementById('add-machine-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       });
