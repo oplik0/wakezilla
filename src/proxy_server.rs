@@ -33,6 +33,7 @@ pub async fn start(port: u16) {
         .route("/machines", post(add_machine))
         .route("/machines/delete", post(delete_machine))
         .route("/machines/remote-turn-off", post(turn_off_remote_machine))
+        .route("/machines/add-port-forward", post(add_port_forward))
         .route("/wol", post(wake_machine))
         .with_state(state);
 
@@ -63,8 +64,17 @@ async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
     MachinesTemplate { machines }
 }
 
-async fn add_machine(State(state): State<AppState>, Form(new_machine): Form<Machine>) -> Redirect {
-    web::start_proxy_if_configured(&new_machine, &state);
+async fn add_machine(State(state): State<AppState>, Form(new_machine_form): Form<web::AddMachineForm>) -> Redirect {
+    let new_machine = Machine {
+        mac: new_machine_form.mac,
+        ip: new_machine_form.ip,
+        name: new_machine_form.name,
+        description: new_machine_form.description,
+        turn_off_port: new_machine_form.turn_off_port,
+        can_be_turned_off: new_machine_form.can_be_turned_off,
+        requests_per_minute: new_machine_form.requests_per_minute,
+        port_forwards: Vec::new(),
+    };
     let mut machines = state.machines.lock().unwrap();
     machines.push(new_machine);
     if let Err(e) = web::save_machines(&machines) {
@@ -77,11 +87,17 @@ async fn delete_machine(
     State(state): State<AppState>,
     Form(payload): Form<DeleteForm>,
 ) -> Redirect {
-    if let Some(tx) = state.proxies.lock().unwrap().remove(&payload.mac) {
-        if tx.send(false).is_ok() {
-            info!("Sent stop signal to proxy for MAC: {}", payload.mac);
+    // Stop all proxies associated with this machine
+    state.proxies.lock().unwrap().retain(|key, tx| {
+        if key.starts_with(&payload.mac) {
+            if tx.send(false).is_ok() {
+                info!("Sent stop signal to proxy for MAC/key: {}", key);
+            }
+            false // Remove the entry
+        } else {
+            true // Keep the entry
         }
-    }
+    });
 
     let mut machines = state.machines.lock().unwrap();
     machines.retain(|m| m.mac != payload.mac);
@@ -142,6 +158,33 @@ async fn turn_off_remote_machine(
         axum::http::StatusCode::NOT_FOUND,
         format!("Machine {} not found", payload.mac),
     )
+}
+
+async fn add_port_forward(
+    State(state): State<AppState>,
+    Form(payload): Form<web::AddPortForwardForm>,
+) -> Redirect {
+    let mut machines_guard = state.machines.lock().unwrap();
+    if let Some(machine) = machines_guard.iter_mut().find(|m| m.mac == payload.mac) {
+        let new_port_forward = web::PortForward {
+            name: payload.name,
+            local_port: payload.local_port,
+            target_port: payload.target_port,
+        };
+        machine.port_forwards.push(new_port_forward.clone());
+
+        let machine_clone_for_proxy = machine.clone();
+
+        if let Err(e) = web::save_machines(&machines_guard) {
+            error!("Error saving machines: {}", e);
+        }
+
+        drop(machines_guard); // Explicitly drop the mutex guard to end the mutable borrow
+
+        // Start the new proxy
+        web::start_proxy_if_configured(&machine_clone_for_proxy, &state);
+    }
+    Redirect::to("/")
 }
 
 async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode, String) {

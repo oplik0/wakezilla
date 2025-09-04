@@ -1,16 +1,18 @@
-use crate::wol;
+use crate::{web::Machine, wol};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
+use tokio::time::Instant;
 use tracing::{error, info, warn};
 
 pub async fn proxy(
     local_port: u16,
     remote_addr: SocketAddr,
-    mac_str: String,
+    machine: Machine,
     wol_port: u16,
     mut rx: watch::Receiver<bool>,
 ) -> io::Result<()> {
@@ -20,6 +22,38 @@ pub async fn proxy(
         "TCP Forwarder listening on {}, proxying to {}",
         listen_addr, remote_addr
     );
+
+    let last_request_time = Arc::new(Mutex::new(Instant::now()));
+
+    if machine.can_be_turned_off {
+        let last_request_time = Arc::clone(&last_request_time);
+        let turn_off_port = machine.turn_off_port;
+        let remote_ip = machine.ip;
+        let mac = machine.mac.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let check_interval = machine.requests_per_minute.unwrap_or(0);
+                if check_interval == 0 {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    continue;
+                }
+                tokio::time::sleep(Duration::from_secs(check_interval as u64 * 60)).await;
+                let elapsed = {
+                    let last_time = last_request_time.lock().unwrap();
+                    last_time.elapsed()
+                };
+
+                if elapsed > Duration::from_secs(check_interval as u64 * 60) {
+                    if let Some(port) = turn_off_port {
+                        let url = format!("http://{}:{}/machines/turn-off", remote_ip, port);
+                        info!("No requests for {}, sending turn-off signal to {}", mac, url);
+                        let _ = reqwest::Client::new().post(&url).send().await;
+                    }
+                }
+            }
+        });
+    }
 
     loop {
         tokio::select! {
@@ -36,8 +70,13 @@ pub async fn proxy(
                     client_addr, remote_addr
                 );
 
+                if machine.can_be_turned_off {
+                    let mut last_time = last_request_time.lock().unwrap();
+                    *last_time = Instant::now();
+                }
+
                 let remote_addr_clone = remote_addr;
-                let mac_str_clone = mac_str.clone();
+                let mac_str_clone = machine.mac.clone();
 
                 tokio::spawn(async move {
                     let connect_timeout = Duration::from_millis(1000);
