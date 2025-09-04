@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-axum = "0.7"
+axum = { version = "0.7", features = ["macros"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros", "sync", "net", "time", "io-util"] }
 serde_json = "1.0"
@@ -18,3 +18,4 @@ ipnetwork = "0.20.0"
 pnet = "0.34.0"
 dns-lookup = "2.0.4"
 futures-util = "0.3"
+reqwest = "0.12.23"

@@ -69,6 +69,7 @@
                                 <th class="px-4 py-3 font-semibold">Description</th>
                                 <th class="px-4 py-3 font-semibold">Fwd Local Port</th>
                                 <th class="px-4 py-3 font-semibold">Fwd Target Port</th>
+                                <th class="px-4 py-3 font-semibold">Turn Off Port</th>
                                 <th class="px-4 py-3 font-semibold">Action</th>
                             </tr>
                         </thead>
@@ -109,6 +110,15 @@
                                         </span>
                                     </td>
                                     <td class="px-4 py-3">
+                                        <span class="font-mono text-xs sm:text-sm">
+                                            {% if let Some(port) = m.turn_off_port %}
+                                                {{ port }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">
                                         <div class="flex flex-wrap gap-2">
                                             <form action="/wol" method="post" class="wol-form">
                                                 <input type="hidden" name="mac" value="{{ m.mac }}">
@@ -117,6 +127,15 @@
                                                     ⚡ Wake Up
                                                 </button>
                                             </form>
+                                            {% if m.turn_off_port.is_some() %}
+                                            <form action="/machines/remote-turn-off" method="post" class="turn-off-form">
+                                                <input type="hidden" name="mac" value="{{ m.mac }}">
+                                                <button type="submit"
+                                                        class="inline-flex items-center justify-center rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700 active:scale-[0.99]">
+                                                    🔌 Turn Off
+                                                </button>
+                                            </form>
+                                            {% endif %}
                                             <form action="/machines/delete"
                                                   method="post"
                                                   onsubmit="return confirm('Remove this machine?');">
@@ -195,6 +214,26 @@
                             </div>
                         </div>
                     </div>
+                    <div class="border-t border-dashed border-gray-200 pt-4 dark:border-gray-800">
+                        <h3 class="mb-3 text-base font-semibold">Remote Shutdown (optional)</h3>
+                        <div class="flex items-start gap-3">
+                            <input type="checkbox" id="can_turn_off" class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:ring-offset-gray-900">
+                            <div>
+                                <label for="can_turn_off" class="text-sm font-medium">Can be turned off remotely</label>
+                                <p class="text-xs text-gray-500">Requires the target machine to be running the client_server.</p>
+                            </div>
+                        </div>
+                        <div id="turn_off_port_container" class="hidden mt-4 grid gap-2">
+                            <label for="turn_off_port" class="text-sm font-medium">Turn Off Port</label>
+                            <input type="number"
+                                   id="turn_off_port"
+                                   name="turn_off_port"
+                                   min="1"
+                                   max="65535"
+                                   value="3001"
+                                   class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" />
+                        </div>
+                    </div>
                     <div class="flex items-center justify-end gap-3">
                         <button type="reset"
                                 class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-gray-50 active:scale-[0.99] dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800">
@@ -209,6 +248,12 @@
         </div>
         <!-- Scripts -->
         <script>
+      const canTurnOffCheckbox = document.getElementById('can_turn_off');
+      const turnOffPortContainer = document.getElementById('turn_off_port_container');
+      canTurnOffCheckbox.addEventListener('change', () => {
+        turnOffPortContainer.classList.toggle('hidden', !canTurnOffCheckbox.checked);
+      });
+
       const scanBtn = document.getElementById('scan-btn');
       const resultsContainer = document.getElementById('scan-results-container');
       const resultsTableBody = document.querySelector('#scan-results-table tbody');
@@ -292,6 +337,37 @@
             alert(responseText);
           } catch (error) {
             console.error('WOL error:', error);
+            alert(`Error: ${error.message}`);
+          } finally {
+            button.innerHTML = originalText;
+            button.disabled = false;
+          }
+        });
+      });
+
+      document.querySelectorAll('.turn-off-form').forEach(form => {
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (!confirm('Turn off this machine?')) return;
+
+          const button = form.querySelector('button[type="submit"]');
+          const originalText = button.innerHTML;
+          button.innerHTML = '🔌 Sending…';
+          button.disabled = true;
+
+          try {
+            const formData = new FormData(form);
+            const response = await fetch(form.action, {
+              method: form.method,
+              body: new URLSearchParams(formData)
+            });
+            const responseText = await response.text();
+            if (!response.ok) {
+              throw new Error(responseText);
+            }
+            alert(responseText);
+          } catch (error) {
+            console.error('Turn off error:', error);
             alert(`Error: ${error.message}`);
           } finally {
             button.innerHTML = originalText;

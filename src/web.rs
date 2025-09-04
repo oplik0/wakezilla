@@ -17,6 +17,7 @@ pub struct Machine {
     pub description: Option<String>,
     pub forward_target_port: Option<u16>,
     pub forward_local_port: Option<u16>,
+    pub turn_off_port: Option<u16>,
 }
 
 #[derive(Deserialize)]
@@ -26,6 +27,11 @@ pub struct WakeForm {
 
 #[derive(Deserialize)]
 pub struct DeleteForm {
+    pub mac: String,
+}
+
+#[derive(Deserialize)]
+pub struct RemoteTurnOffForm {
     pub mac: String,
 }
 

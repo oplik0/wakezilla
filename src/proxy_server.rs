@@ -12,8 +12,8 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 use crate::scanner;
+use crate::web::{self, AppState, DeleteForm, Machine, RemoteTurnOffForm, WakeForm};
 use crate::wol;
-use crate::web::{self, AppState, DeleteForm, Machine, WakeForm};
 
 pub async fn start(port: u16) {
     let initial_machines = web::load_machines().unwrap_or_default();
@@ -32,6 +32,7 @@ pub async fn start(port: u16) {
         .route("/scan", get(scan_network_handler))
         .route("/machines", post(add_machine))
         .route("/machines/delete", post(delete_machine))
+        .route("/machines/remote-turn-off", post(turn_off_remote_machine))
         .route("/wol", post(wake_machine))
         .with_state(state);
 
@@ -88,6 +89,59 @@ async fn delete_machine(
         error!("Error saving machines: {}", e);
     }
     Redirect::to("/")
+}
+
+async fn turn_off_remote_machine(
+    State(state): State<AppState>,
+    Form(payload): Form<RemoteTurnOffForm>,
+) -> (axum::http::StatusCode, String) {
+    let machine = {
+        let machines = state.machines.lock().unwrap();
+        machines.iter().find(|m| m.mac == payload.mac).cloned()
+    };
+
+    if let Some(machine) = machine {
+        if let Some(port) = machine.turn_off_port {
+            let url = format!("http://{}:{}/machines/turn-off", machine.ip, port);
+            info!("Sending turn-off request to {}", url);
+            let response = reqwest::Client::new().post(&url).send().await;
+            match response {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        return (
+                            axum::http::StatusCode::OK,
+                            format!("Sent turn-off request to {}", payload.mac),
+                        );
+                    } else {
+                        return (
+                            axum::http::StatusCode::BAD_GATEWAY,
+                            format!(
+                                "Turn-off request to {} failed with status {}",
+                                payload.mac,
+                                resp.status()
+                            ),
+                        );
+                    }
+                }
+                Err(e) => {
+                    return (
+                        axum::http::StatusCode::BAD_GATEWAY,
+                        format!("Failed to send turn-off request: {}", e),
+                    );
+                }
+            }
+        } else {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("No turn-off port configured for {}", payload.mac),
+            );
+        }
+    }
+
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        format!("Machine {} not found", payload.mac),
+    )
 }
 
 async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode, String) {
