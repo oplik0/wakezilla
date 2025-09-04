@@ -37,7 +37,9 @@ pub struct Machine {
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
     pub can_be_turned_off: bool,
-    pub requests_per_minute: Option<u32>,
+    #[serde(default = "get_default_request_rate")]
+    pub request_rate: RequestRateConfig,
+
     pub port_forwards: Vec<PortForward>,
 }
 
@@ -79,7 +81,23 @@ pub struct AddMachineForm {
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
     pub can_be_turned_off: bool,
-    pub requests_per_minute: Option<u32>,
+    pub num_requests: Option<u32>,
+    pub interval_minutes: Option<u32>,
+
+    pub requests_per_hour: Option<u32>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct RequestRateConfig {
+    pub max_requests: u32,
+    pub period_minutes: u32,
+}
+
+pub fn get_default_request_rate() -> RequestRateConfig {
+    RequestRateConfig {
+        max_requests: 10,
+        period_minutes: 30,
+    }
 }
 
 #[derive(Clone)]

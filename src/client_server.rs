@@ -27,8 +27,8 @@ async fn health_check() -> impl IntoResponse {
 
 async fn turn_off_machine() -> impl IntoResponse {
     system::shutdown_machine();
-    return (
+    (
         axum::http::StatusCode::OK,
-        format!("Shutting down this machine"),
-    );
+        "Shutting down this machine".to_string(),
+    )
 }

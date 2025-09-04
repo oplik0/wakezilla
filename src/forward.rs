@@ -33,7 +33,7 @@ pub async fn proxy(
 
         tokio::spawn(async move {
             loop {
-                let check_interval = machine.requests_per_minute.unwrap_or(0);
+                let check_interval = 0;
                 if check_interval == 0 {
                     tokio::time::sleep(Duration::from_secs(60)).await;
                     continue;

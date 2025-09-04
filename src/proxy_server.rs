@@ -72,7 +72,11 @@ async fn add_machine(State(state): State<AppState>, Form(new_machine_form): Form
         description: new_machine_form.description,
         turn_off_port: new_machine_form.turn_off_port,
         can_be_turned_off: new_machine_form.can_be_turned_off,
-        requests_per_minute: new_machine_form.requests_per_minute,
+        request_rate: web::RequestRateConfig {
+            max_requests: new_machine_form.requests_per_hour.unwrap_or(1000),
+            period_minutes: 60,
+        },
+
         port_forwards: Vec::new(),
     };
     let mut machines = state.machines.lock().unwrap();
