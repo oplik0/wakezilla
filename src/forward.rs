@@ -9,6 +9,8 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::{error, info, warn};
 
+const SECS_PER_MINUTE: u64 = 60;
+
 pub async fn proxy(
     local_port: u16,
     remote_addr: SocketAddr,
@@ -35,19 +37,22 @@ pub async fn proxy(
             loop {
                 let check_interval = 0;
                 if check_interval == 0 {
-                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    tokio::time::sleep(Duration::from_secs(SECS_PER_MINUTE)).await;
                     continue;
                 }
-                tokio::time::sleep(Duration::from_secs(check_interval as u64 * 60)).await;
+                tokio::time::sleep(Duration::from_secs(check_interval as u64 * SECS_PER_MINUTE)).await;
                 let elapsed = {
                     let last_time = last_request_time.lock().unwrap();
                     last_time.elapsed()
                 };
 
-                if elapsed > Duration::from_secs(check_interval as u64 * 60) {
+                if elapsed > Duration::from_secs(check_interval as u64 * SECS_PER_MINUTE) {
                     if let Some(port) = turn_off_port {
                         let url = format!("http://{}:{}/machines/turn-off", remote_ip, port);
-                        info!("No requests for {}, sending turn-off signal to {}", mac, url);
+                        info!(
+                            "No requests for {}, sending turn-off signal to {}",
+                            remote_ip, url
+                        );
                         let _ = reqwest::Client::new().post(&url).send().await;
                     }
                 }
