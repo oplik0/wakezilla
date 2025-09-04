@@ -113,6 +113,20 @@ pub async fn run(port: u16) {
     axum::serve(listener, app).await.unwrap();
 }
 
+pub async fn run_client_server(port: u16) {
+    let app = Router::new().route("/health", get(health_check));
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = TcpListener::bind(addr).await.unwrap();
+    info!("listening on http://{}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn health_check() -> impl IntoResponse {
+    let status = serde_json::json!({ "status": "ok" });
+    Json(status)
+}
+
 async fn scan_network_handler() -> impl IntoResponse {
     match scanner::scan_network().await {
         Ok(devices) => Ok(Json(devices)),

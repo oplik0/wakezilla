@@ -22,6 +22,8 @@ enum Commands {
     Send(SendArgs),
     /// Start web server to send WOL packets
     Serve(ServeArgs),
+    /// Start a client server
+    ClientServer(ClientServerArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -29,6 +31,14 @@ enum Commands {
 struct ServeArgs {
     /// Port to listen on for the web server
     #[arg(short, long, default_value_t = 3000)]
+    port: u16,
+}
+
+#[derive(Parser, Debug)]
+#[command()]
+struct ClientServerArgs {
+    /// Port to listen on for the hello server
+    #[arg(short, long, default_value_t = 3001)]
     port: u16,
 }
 
@@ -115,6 +125,9 @@ async fn main() -> io::Result<()> {
         }
         Commands::Serve(args) => {
             web::run(args.port).await;
+        }
+        Commands::ClientServer(args) => {
+            web::run_client_server(args.port).await;
         }
     }
 
