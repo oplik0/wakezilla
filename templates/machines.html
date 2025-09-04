@@ -77,7 +77,7 @@
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
                             {% for m in machines %}
                                 <tr class="align-middle">
-                                    <td class="px-4 py-3 text-xs sm:text-sm">{{ m.name }}</td>
+                                    <td class="px-4 py-3 text-xs sm:text-sm"><a class="underline text-blue-700 dark:text-blue-400 hover:text-blue-900" href="/machines/{{ m.mac }}">{{ m.name }}</a></td>
                                     <td class="px-4 py-3 font-mono text-xs sm:text-sm">{{ m.mac }}</td>
                                     <td class="px-4 py-3 font-mono text-xs sm:text-sm">{{ m.ip }}</td>
                                     <td class="px-4 py-3">

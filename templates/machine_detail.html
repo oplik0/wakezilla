@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Machine Details</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-full bg-gray-50 text-gray-800 antialiased dark:bg-gray-950 dark:text-gray-100">
+<div class="mx-auto max-w-3xl px-4 py-8">
+    <header class="mb-6 flex items-center gap-4">
+        <a href="/" class="rounded-lg border border-gray-300 px-4 py-1 text-sm font-medium shadow-sm hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800">&larr; Back</a>
+        <h1 class="text-xl font-bold">Machine: {{ machine.name }} ({{ machine.mac }})</h1>
+    </header>
+
+    <section class="mb-6">
+        <h2 class="text-lg font-semibold">Port Forwards</h2>
+        <form method="post" action="/machines/update-ports">
+            <input type="hidden" name="mac" value="{{ machine.mac }}" />
+            <table class="min-w-full text-left text-sm border rounded">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="px-3 py-2">Name</th>
+                        <th class="px-3 py-2">Local Port</th>
+                        <th class="px-3 py-2">Target Port</th>
+<th class="px-3 py-2">Remove</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for (idx, pf) in machine.port_forwards.iter().enumerate() %}
+                    <tr>
+                        <td class="px-3 py-1">
+                            <input type="text" name="pf_name_{{ idx }}" value="{{ pf.name }}" class="border rounded px-2 py-1 w-full" />
+                        </td>
+                        <td class="px-3 py-1">
+                            <input type="number" name="pf_local_{{ idx }}" value="{{ pf.local_port }}" class="border rounded px-2 py-1 w-full" />
+                        </td>
+                        <td class="px-3 py-1">
+                            <input type="number" name="pf_target_{{ idx }}" value="{{ pf.target_port }}" class="border rounded px-2 py-1 w-full" />
+                        </td>
+                        <td class="px-3 py-1 text-center">
+                            <input type="checkbox" name="pf_remove_{{ idx }}" />
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="px-3 py-1"><input type="text" name="pf_name_new" placeholder="New Name" class="border rounded px-2 py-1 w-full" /></td>
+                        <td class="px-3 py-1"><input type="number" name="pf_local_new" placeholder="New Local Port" class="border rounded px-2 py-1 w-full" /></td>
+                        <td class="px-3 py-1"><input type="number" name="pf_target_new" placeholder="New Target Port" class="border rounded px-2 py-1 w-full" /></td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="mt-4 flex justify-end">
+                <button type="submit" class="rounded bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700">Update Ports</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="mt-8">
+        <h2 class="text-lg font-semibold mb-2">Machine Info</h2>
+        <div class="grid grid-cols-2 gap-y-1">
+            <div class="font-medium">MAC</div><div class="font-mono">{{ machine.mac }}</div>
+            <div class="font-medium">IP</div><div class="font-mono">{{ machine.ip }}</div>
+            <div class="font-medium">Name</div><div>{{ machine.name }}</div>
+            <div class="font-medium">Description</div><div>{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}-{% endif %}</div>
+        </div>
+    </section>
+    <section class="mt-8">
+        <h2 class="text-lg font-semibold mb-2">Machine Configuration</h2>
+        <form action="/machines/update-config" method="post" class="space-y-3 max-w-md">
+            <input type="hidden" name="mac" value="{{ machine.mac }}">
+            <div>
+                <label for="name" class="block text-sm font-medium">Name</label>
+                <input type="text" id="name" name="name" required class="w-full border rounded px-2 py-1" value="{{ machine.name }}">
+            </div>
+            <div>
+                <label for="description" class="block text-sm font-medium">Description</label>
+                <input type="text" id="description" name="description" class="w-full border rounded px-2 py-1" value="{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}{% endif %}">
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="checkbox" id="can_be_turned_off" name="can_be_turned_off" value="true" {% if machine.can_be_turned_off %}checked{% endif %} />
+                <label for="can_be_turned_off" class="text-sm">Can be turned off remotely</label>
+            </div>
+            <div class="flex justify-end">
+                <button type="submit" class="rounded bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700">Update Config</button>
+            </div>
+        </form>
+    </section>
+</div>
+</body>
+</html>
+

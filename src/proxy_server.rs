@@ -34,6 +34,9 @@ pub async fn start(port: u16) {
         .route("/machines/delete", post(delete_machine))
         .route("/machines/remote-turn-off", post(turn_off_remote_machine))
         .route("/machines/add-port-forward", post(add_port_forward))
+        .route("/machines/:mac", get(machine_detail))
+        .route("/machines/update-ports", post(update_ports))
+        .route("/machines/update-config", post(update_machine_config))
         .route("/wol", post(wake_machine))
         .with_state(state);
 
@@ -49,6 +52,12 @@ struct MachinesTemplate {
     machines: Vec<Machine>,
 }
 
+#[derive(Template)]
+#[template(path = "machine_detail.html")]
+struct MachineDetailTemplate {
+    machine: Machine,
+}
+
 async fn scan_network_handler() -> impl IntoResponse {
     match scanner::scan_network().await {
         Ok(devices) => Ok(Json(devices)),
@@ -56,6 +65,17 @@ async fn scan_network_handler() -> impl IntoResponse {
             error!("Network scan failed: {}", e);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
+    }
+}
+
+use axum::extract::Path;
+
+async fn machine_detail(State(state): State<AppState>, Path(mac): Path<String>) -> impl IntoResponse {
+    let machines = state.machines.lock().unwrap();
+    if let Some(machine) = machines.iter().find(|m| m.mac == mac).cloned() {
+        MachineDetailTemplate { machine }.into_response()
+    } else {
+        axum::http::StatusCode::NOT_FOUND.into_response()
     }
 }
 
@@ -162,6 +182,73 @@ async fn turn_off_remote_machine(
         axum::http::StatusCode::NOT_FOUND,
         format!("Machine {} not found", payload.mac),
     )
+}
+
+async fn update_machine_config(State(state): State<AppState>, Form(payload): Form<std::collections::HashMap<String, String>>) -> Redirect {
+    let mac = payload.get("mac").cloned().unwrap_or_default();
+    let mut machines = state.machines.lock().unwrap();
+    if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
+        if let Some(new_name) = payload.get("name") {
+            machine.name = new_name.clone();
+        }
+        machine.description = payload.get("description").map(|v| if v.trim().is_empty() { None } else { Some(v.clone()) }).flatten();
+        // If the box is present in the form (checked), the value is "true".
+        machine.can_be_turned_off = payload.get("can_be_turned_off").is_some();
+        let _ = web::save_machines(&machines);
+        return Redirect::to(&format!("/machines/{}", mac));
+    }
+    Redirect::to("/")
+}
+
+async fn update_ports(State(state): State<AppState>, Form(payload): Form<std::collections::HashMap<String, String>>) -> Redirect {
+    let mac = payload.get("mac").cloned().unwrap_or_default();
+    let mut machines = state.machines.lock().unwrap();
+    if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
+        let mut ports = Vec::new();
+        let mut idx = 0;
+        loop {
+            let name_key = format!("pf_name_{}", idx);
+            let local_key = format!("pf_local_{}", idx);
+            let target_key = format!("pf_target_{}", idx);
+            match (payload.get(&name_key), payload.get(&local_key), payload.get(&target_key)) {
+                (Some(name), Some(local), Some(target)) => {
+                    let remove_key = format!("pf_remove_{}", idx);
+                    let remove_checked = payload.get(&remove_key).is_some();
+                    if !remove_checked && !name.trim().is_empty() && !local.trim().is_empty() && !target.trim().is_empty() {
+                        if let (Ok(local), Ok(target)) = (local.parse(), target.parse()) {
+                            ports.push(web::PortForward {
+                                name: name.clone(),
+                                local_port: local,
+                                target_port: target,
+                            });
+                        }
+                    }
+                },
+                _ => break,
+            }
+            idx += 1;
+        }
+        // Add new port if submitted
+        if let (Some(name), Some(local), Some(target)) = (
+            payload.get("pf_name_new"),
+            payload.get("pf_local_new"),
+            payload.get("pf_target_new")
+        ) {
+            if !name.trim().is_empty() && !local.trim().is_empty() && !target.trim().is_empty() {
+                if let (Ok(local), Ok(target)) = (local.parse(), target.parse()) {
+                    ports.push(web::PortForward {
+                        name: name.clone(),
+                        local_port: local,
+                        target_port: target,
+                    });
+                }
+            }
+        }
+        machine.port_forwards = ports;
+        let _ = web::save_machines(&machines);
+        return Redirect::to(&format!("/machines/{}", mac));
+    }
+    Redirect::to("/")
 }
 
 async fn add_port_forward(
