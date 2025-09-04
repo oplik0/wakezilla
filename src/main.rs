@@ -4,6 +4,8 @@ use std::net::{IpAddr, Ipv4Addr};
 use tracing::{error, info};
 
 mod forward;
+mod proxy_server;
+mod client_server;
 mod scanner;
 mod system;
 mod web;
@@ -21,8 +23,8 @@ struct Cli {
 enum Commands {
     /// Send WOL packet via CLI
     Send(SendArgs),
-    /// Start web server to send WOL packets
-    Serve(ServeArgs),
+    /// Start proxy server
+    ProxyServer(ServeArgs),
     /// Start a client server
     ClientServer(ClientServerArgs),
 }
@@ -124,11 +126,11 @@ async fn main() -> io::Result<()> {
                 }
             }
         }
-        Commands::Serve(args) => {
-            web::run(args.port).await;
+        Commands::ProxyServer(args) => {
+            proxy_server::start(args.port).await;
         }
         Commands::ClientServer(args) => {
-            web::run_client_server(args.port).await;
+            client_server::start(args.port).await;
         }
     }
 
