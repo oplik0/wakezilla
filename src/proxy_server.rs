@@ -194,6 +194,11 @@ async fn update_machine_config(State(state): State<AppState>, Form(payload): For
         machine.description = payload.get("description").map(|v| if v.trim().is_empty() { None } else { Some(v.clone()) }).flatten();
         // If the box is present in the form (checked), the value is "true".
         machine.can_be_turned_off = payload.get("can_be_turned_off").is_some();
+        if let Some(rph) = payload.get("requests_per_hour") {
+            if let Ok(num) = rph.parse() {
+                machine.request_rate.max_requests = num;
+            }
+        }
         let _ = web::save_machines(&machines);
         return Redirect::to(&format!("/machines/{}", mac));
     }

@@ -82,6 +82,10 @@
                 <div class="text-xs font-semibold text-gray-500">Description</div>
                 <div>{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}-{% endif %}</div>
             </div>
+            <div>
+                <div class="text-xs font-semibold text-gray-500">Requests per Hour</div>
+                <div>{{ machine.request_rate.max_requests }}</div>
+            </div>
         </div>
     </section>
     <section class="mt-8">
@@ -97,6 +101,10 @@
             <div class="grid gap-2">
                 <label for="description" class="text-sm font-medium">Description</label>
                 <input type="text" id="description" name="description" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" value="{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}{% endif %}">
+            </div>
+            <div class="grid gap-2">
+                <label for="requests_per_hour" class="text-sm font-medium">Requests per Hour</label>
+                <input type="number" id="requests_per_hour" name="requests_per_hour" min="1" value="{{ machine.request_rate.max_requests }}" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950">
             </div>
             <div class="flex items-center gap-2">
                 <input type="checkbox" id="can_be_turned_off" name="can_be_turned_off" value="true" {% if machine.can_be_turned_off %}checked{% endif %} />
