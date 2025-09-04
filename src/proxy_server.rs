@@ -250,7 +250,18 @@ async fn update_ports(State(state): State<AppState>, Form(payload): Form<std::co
             }
         }
         machine.port_forwards = ports;
+        let machine_clone = machine.clone();
         let _ = web::save_machines(&machines);
+        // Remove proxies for this mac
+        state.proxies.lock().unwrap().retain(|key, tx| {
+            let should_remove = key.starts_with(&mac);
+            if should_remove {
+                let _ = tx.send(false);
+            }
+            !should_remove
+        });
+        // Restart with new ports
+        web::start_proxy_if_configured(&machine_clone, &state);
         return Redirect::to(&format!("/machines/{}", mac));
     }
     Redirect::to("/")
