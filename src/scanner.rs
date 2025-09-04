@@ -1,4 +1,3 @@
-use dns_lookup;
 use futures_util::future::join_all;
 use ipnetwork::IpNetwork;
 use pnet::datalink::{self, Channel, Config, NetworkInterface as PnetNetworkInterface};

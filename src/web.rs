@@ -16,6 +16,7 @@ use tracing::{error, info};
 
 use crate::forward;
 use crate::scanner;
+use crate::system;
 use crate::wol;
 
 const DB_PATH: &str = "machines.json";
@@ -70,11 +71,7 @@ fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         let wol_port = 9; // Default WOL port
 
         let (tx, rx) = watch::channel(true);
-        state
-            .proxies
-            .lock()
-            .unwrap()
-            .insert(mac_str.clone(), tx);
+        state.proxies.lock().unwrap().insert(mac_str.clone(), tx);
 
         tokio::spawn(async move {
             if let Err(e) = forward::proxy(local_port, remote_addr, mac_str, wol_port, rx).await {
@@ -114,7 +111,21 @@ pub async fn run(port: u16) {
 }
 
 pub async fn run_client_server(port: u16) {
-    let app = Router::new().route("/health", get(health_check));
+    let initial_machines = load_machines().unwrap_or_default();
+
+    let state = AppState {
+        machines: Arc::new(Mutex::new(initial_machines.clone())),
+        proxies: Arc::new(Mutex::new(HashMap::new())),
+    };
+
+    for machine in &initial_machines {
+        start_proxy_if_configured(machine, &state);
+    }
+
+    let app = Router::new()
+        .route("/health", get(health_check))
+        .route("/machines/turn-off", post(turn_off_machine))
+        .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -168,6 +179,14 @@ async fn delete_machine(
         error!("Error saving machines: {}", e);
     }
     Redirect::to("/")
+}
+
+async fn turn_off_machine() -> impl IntoResponse {
+    system::shutdown_machine();
+    (
+        axum::http::StatusCode::OK,
+        "Shutting down this machine".to_string(),
+    )
 }
 
 async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode, String) {

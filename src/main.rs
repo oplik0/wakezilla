@@ -5,6 +5,7 @@ use tracing::{error, info};
 
 mod forward;
 mod scanner;
+mod system;
 mod web;
 mod wol;
 
