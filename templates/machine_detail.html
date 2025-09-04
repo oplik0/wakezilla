@@ -7,23 +7,25 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-full bg-gray-50 text-gray-800 antialiased dark:bg-gray-950 dark:text-gray-100">
-<div class="mx-auto max-w-3xl px-4 py-8">
+<div class="mx-auto max-w-6xl px-4 py-8">
     <header class="mb-6 flex items-center gap-4">
         <a href="/" class="rounded-lg border border-gray-300 px-4 py-1 text-sm font-medium shadow-sm hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800">&larr; Back</a>
         <h1 class="text-xl font-bold">Machine: {{ machine.name }} ({{ machine.mac }})</h1>
     </header>
 
     <section class="mb-6">
-        <h2 class="text-lg font-semibold">Port Forwards</h2>
-        <form method="post" action="/machines/update-ports">
+        <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Port Forwards</h2>
+        </div>
+        <form method="post" action="/machines/update-ports" class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <input type="hidden" name="mac" value="{{ machine.mac }}" />
-            <table class="min-w-full text-left text-sm border rounded">
-                <thead class="bg-gray-100">
+            <table class="min-w-full text-left text-sm">
+                <thead class="bg-gray-50 text-gray-600 dark:bg-gray-950 dark:text-gray-300">
                     <tr>
-                        <th class="px-3 py-2">Name</th>
-                        <th class="px-3 py-2">Local Port</th>
-                        <th class="px-3 py-2">Target Port</th>
-<th class="px-3 py-2">Remove</th>
+                        <th class="px-4 py-3 font-semibold">Name</th>
+                        <th class="px-4 py-3 font-semibold">Local Port</th>
+                        <th class="px-4 py-3 font-semibold">Target Port</th>
+                        <th class="px-4 py-3 font-semibold">Remove</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -46,45 +48,62 @@
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td class="px-3 py-1"><input type="text" name="pf_name_new" placeholder="New Name" class="border rounded px-2 py-1 w-full" /></td>
-                        <td class="px-3 py-1"><input type="number" name="pf_local_new" placeholder="New Local Port" class="border rounded px-2 py-1 w-full" /></td>
-                        <td class="px-3 py-1"><input type="number" name="pf_target_new" placeholder="New Target Port" class="border rounded px-2 py-1 w-full" /></td>
+                        <td class="px-4 py-2"><input type="text" name="pf_name_new" placeholder="New Name" class="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-950 w-full" /></td>
+                        <td class="px-4 py-2"><input type="number" name="pf_local_new" placeholder="New Local Port" class="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-950 w-full" /></td>
+                        <td class="px-4 py-2"><input type="number" name="pf_target_new" placeholder="New Target Port" class="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-950 w-full" /></td>
+                        <td></td>
                     </tr>
                 </tfoot>
             </table>
             <div class="mt-4 flex justify-end">
-                <button type="submit" class="rounded bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700">Update Ports</button>
+                <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]">Save Port Changes</button>
             </div>
         </form>
     </section>
 
     <section class="mt-8">
-        <h2 class="text-lg font-semibold mb-2">Machine Info</h2>
-        <div class="grid grid-cols-2 gap-y-1">
-            <div class="font-medium">MAC</div><div class="font-mono">{{ machine.mac }}</div>
-            <div class="font-medium">IP</div><div class="font-mono">{{ machine.ip }}</div>
-            <div class="font-medium">Name</div><div>{{ machine.name }}</div>
-            <div class="font-medium">Description</div><div>{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}-{% endif %}</div>
+        <div class="mb-3">
+            <h2 class="text-lg font-semibold">Machine Info</h2>
+        </div>
+        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-12">
+            <div>
+                <div class="text-xs font-semibold text-gray-500">MAC</div>
+                <div class="font-mono">{{ machine.mac }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-semibold text-gray-500">IP</div>
+                <div class="font-mono">{{ machine.ip }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-semibold text-gray-500">Name</div>
+                <div>{{ machine.name }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-semibold text-gray-500">Description</div>
+                <div>{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}-{% endif %}</div>
+            </div>
         </div>
     </section>
     <section class="mt-8">
-        <h2 class="text-lg font-semibold mb-2">Machine Configuration</h2>
-        <form action="/machines/update-config" method="post" class="space-y-3 max-w-md">
+        <div class="mb-3">
+            <h2 class="text-lg font-semibold">Machine Configuration</h2>
+        </div>
+        <form action="/machines/update-config" method="post" class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 max-w-lg grid gap-6">
             <input type="hidden" name="mac" value="{{ machine.mac }}">
-            <div>
-                <label for="name" class="block text-sm font-medium">Name</label>
-                <input type="text" id="name" name="name" required class="w-full border rounded px-2 py-1" value="{{ machine.name }}">
+            <div class="grid gap-2">
+                <label for="name" class="text-sm font-medium">Name</label>
+                <input type="text" id="name" name="name" required class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" value="{{ machine.name }}">
             </div>
-            <div>
-                <label for="description" class="block text-sm font-medium">Description</label>
-                <input type="text" id="description" name="description" class="w-full border rounded px-2 py-1" value="{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}{% endif %}">
+            <div class="grid gap-2">
+                <label for="description" class="text-sm font-medium">Description</label>
+                <input type="text" id="description" name="description" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950" value="{% if let Some(desc) = machine.description.as_deref() %}{{ desc }}{% else %}{% endif %}">
             </div>
             <div class="flex items-center gap-2">
                 <input type="checkbox" id="can_be_turned_off" name="can_be_turned_off" value="true" {% if machine.can_be_turned_off %}checked{% endif %} />
                 <label for="can_be_turned_off" class="text-sm">Can be turned off remotely</label>
             </div>
             <div class="flex justify-end">
-                <button type="submit" class="rounded bg-blue-600 px-4 py-2 text-white font-semibold shadow hover:bg-blue-700">Update Config</button>
+                <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]">Save Config</button>
             </div>
         </form>
     </section>
