@@ -1,4 +1,4 @@
-use crate::{system, web::Machine, wol};
+use crate::{web::Machine, wol};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -9,15 +9,17 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::{error, info, warn};
 
-const SECS_PER_MINUTE: u64 = 60;
 
-async fn turn_off_remote_machine(remote_ip: &Ipv4Addr, turn_off_port: u16) {
+pub async fn turn_off_remote_machine(remote_ip: &str, turn_off_port: u16) -> Result<(), reqwest::Error> {
     let url = format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port);
-    info!(
-        "No requests for {}, sending turn-off signal to {}",
-        remote_ip, url
-    );
-    let _ = reqwest::Client::new().post(&url).send().await;
+    info!("Sending turn-off signal to {}", url);
+    let response = reqwest::Client::new().post(&url).send().await?;
+    if response.status().is_success() {
+        info!("Successfully sent turn-off signal to {}:{}", remote_ip, turn_off_port);
+    } else {
+        error!("Failed to send turn-off signal to {}:{}, status: {}", remote_ip, turn_off_port, response.status());
+    }
+    Ok(())
 }
 pub async fn proxy(
     local_port: u16,
@@ -35,7 +37,7 @@ pub async fn proxy(
 
     let last_request_time = Arc::new(Mutex::new(Instant::now()));
 
-    if machine.can_be_turned_off {
+    if machine.request_rate.max_requests > 0 {
         let last_request_time = Arc::clone(&last_request_time);
         if let Some(port) = machine.turn_off_port {
             let turn_off_port = port;
@@ -47,7 +49,7 @@ pub async fn proxy(
             tokio::spawn(async move {
                 let mut count = 0;
                 loop {
-                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    tokio::time::sleep(Duration::from_secs(per_minutes as u64 * 60)).await;
                     let elapsed = {
                         let last_time = last_request_time.lock().unwrap();
                         last_time.elapsed()
@@ -56,13 +58,12 @@ pub async fn proxy(
                         "checking for inactivity for machine {} ({}), elapsed: {:?}",
                         remote_ip, mac, elapsed
                     );
-                    if elapsed > Duration::from_secs(60) {
+                    if elapsed > Duration::from_secs(per_minutes as u64 * 60) {
                         count += 1;
-                        if elapsed > Duration::from_mins(per_minutes.into()) {
-                            count = amount_req; // force turn off
+                        if count >= amount_req as u32 {
+                            if let Err(e) = turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await {
+                            error!("Failed to send turn-off signal: {}", e);
                         }
-                        if count >= amount_req {
-                            turn_off_remote_machine(&remote_ip, turn_off_port).await;
                             break;
                         }
                     } else {
@@ -90,7 +91,7 @@ pub async fn proxy(
                     client_addr, remote_addr
                 );
 
-                if machine.can_be_turned_off {
+                if machine.request_rate.max_requests > 0 {
                     let mut last_time = last_request_time.lock().unwrap();
                     *last_time = Instant::now();
                 }

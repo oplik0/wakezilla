@@ -13,6 +13,7 @@ use tracing::{error, info};
 
 use crate::scanner;
 use crate::web::{self, AppState, DeleteForm, Machine, RemoteTurnOffForm, WakeForm};
+use crate::forward;
 use crate::wol;
 
 pub async fn start(port: u16) {
@@ -142,26 +143,13 @@ async fn turn_off_remote_machine(
 
     if let Some(machine) = machine {
         if let Some(port) = machine.turn_off_port {
-            let url = format!("http://{}:{}/machines/turn-off", machine.ip, port);
-            info!("Sending turn-off request to {}", url);
-            let response = reqwest::Client::new().post(&url).send().await;
-            match response {
-                Ok(resp) => {
-                    if resp.status().is_success() {
-                        return (
-                            axum::http::StatusCode::OK,
-                            format!("Sent turn-off request to {}", payload.mac),
-                        );
-                    } else {
-                        return (
-                            axum::http::StatusCode::BAD_GATEWAY,
-                            format!(
-                                "Turn-off request to {} failed with status {}",
-                                payload.mac,
-                                resp.status()
-                            ),
-                        );
-                    }
+            info!("Sending turn-off request to {}:{}", machine.ip, port);
+            match forward::turn_off_remote_machine(&machine.ip.to_string(), port).await {
+                Ok(_) => {
+                    return (
+                        axum::http::StatusCode::OK,
+                        format!("Sent turn-off request to {}", payload.mac),
+                    );
                 }
                 Err(e) => {
                     return (
