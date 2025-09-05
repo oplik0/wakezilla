@@ -11,6 +11,14 @@ use tracing::{error, info, warn};
 
 const SECS_PER_MINUTE: u64 = 60;
 
+async fn turn_off_remote_machine(remote_ip: &Ipv4Addr, turn_off_port: u16) {
+    let url = format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port);
+    info!(
+        "No requests for {}, sending turn-off signal to {}",
+        remote_ip, url
+    );
+    let _ = reqwest::Client::new().post(&url).send().await;
+}
 pub async fn proxy(
     local_port: u16,
     remote_addr: SocketAddr,
@@ -33,6 +41,8 @@ pub async fn proxy(
             let turn_off_port = port;
             let remote_ip = machine.ip;
             let mac = machine.mac.clone();
+            let amount_req = machine.request_rate.max_requests;
+            let per_minutes = machine.request_rate.period_minutes;
 
             tokio::spawn(async move {
                 let mut count = 0;
@@ -48,14 +58,11 @@ pub async fn proxy(
                     );
                     if elapsed > Duration::from_secs(60) {
                         count += 1;
-                        if count >= 3 {
-                            let url =
-                                format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port);
-                            info!(
-                                "No requests for {}, sending turn-off signal to {}",
-                                remote_ip, url
-                            );
-                            let _ = reqwest::Client::new().post(&url).send().await;
+                        if elapsed > Duration::from_mins(per_minutes.into()) {
+                            count = amount_req; // force turn off
+                        }
+                        if count >= amount_req {
+                            turn_off_remote_machine(&remote_ip, turn_off_port).await;
                             break;
                         }
                     } else {
