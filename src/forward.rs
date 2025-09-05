@@ -1,4 +1,4 @@
-use crate::{web::Machine, wol};
+use crate::{system, web::Machine, wol};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -29,35 +29,43 @@ pub async fn proxy(
 
     if machine.can_be_turned_off {
         let last_request_time = Arc::clone(&last_request_time);
-        let turn_off_port = machine.turn_off_port;
-        let remote_ip = machine.ip;
-        let mac = machine.mac.clone();
+        if let Some(port) = machine.turn_off_port {
+            let turn_off_port = port;
+            let remote_ip = machine.ip;
+            let mac = machine.mac.clone();
 
-        tokio::spawn(async move {
-            loop {
-                let check_interval = 0;
-                if check_interval == 0 {
-                    tokio::time::sleep(Duration::from_secs(SECS_PER_MINUTE)).await;
-                    continue;
-                }
-                tokio::time::sleep(Duration::from_secs(check_interval as u64 * SECS_PER_MINUTE)).await;
-                let elapsed = {
-                    let last_time = last_request_time.lock().unwrap();
-                    last_time.elapsed()
-                };
-
-                if elapsed > Duration::from_secs(check_interval as u64 * SECS_PER_MINUTE) {
-                    if let Some(port) = turn_off_port {
-                        let url = format!("http://{}:{}/machines/turn-off", remote_ip, port);
-                        info!(
-                            "No requests for {}, sending turn-off signal to {}",
-                            remote_ip, url
-                        );
-                        let _ = reqwest::Client::new().post(&url).send().await;
+            tokio::spawn(async move {
+                let mut count = 0;
+                loop {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    let elapsed = {
+                        let last_time = last_request_time.lock().unwrap();
+                        last_time.elapsed()
+                    };
+                    info!(
+                        "checking for inactivity for machine {} ({}), elapsed: {:?}",
+                        remote_ip, mac, elapsed
+                    );
+                    if elapsed > Duration::from_secs(60) {
+                        count += 1;
+                        if count >= 3 {
+                            let url =
+                                format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port);
+                            info!(
+                                "No requests for {}, sending turn-off signal to {}",
+                                remote_ip, url
+                            );
+                            let _ = reqwest::Client::new().post(&url).send().await;
+                            break;
+                        }
+                    } else {
+                        count = 0;
                     }
                 }
-            }
-        });
+            });
+        }
+    } else {
+        info!("Machine {} cannot be turned off automatically.", machine.ip);
     }
 
     loop {
