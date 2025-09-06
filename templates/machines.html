@@ -4,7 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport"
               content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <title>WOL Manager</title>
+        <title>Wakezilla</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <script>
       // Tailwind config (optional: enables class-based dark mode)
@@ -21,10 +21,11 @@
     <body class="min-h-full bg-gray-50 text-gray-800 antialiased dark:bg-gray-950 dark:text-gray-100">
         <!-- Page wrapper -->
         <div class="mx-auto max-w-6xl px-4 py-8">
+
             <!-- Header -->
             <header class="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight">WOL Manager</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">Wakezilla Manager</h1>
                     <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Wake, manage, and forward to your registered machines.</p>
                 </div>
                 <button id="scan-btn"
@@ -125,11 +126,14 @@
                                                 <span class="text-gray-500 text-xs">-</span>
                                             {% endif %}
                                         </div>
-                                        <form action="/machines/add-port-forward" method="post" class="mt-1 flex items-center gap-2">
+                                        <form action="/machines/add-port-forward" method="post" class="mt-1 flex flex-col items-center gap-2">
+                                          <div class="flex items-center gap-1">
                                             <input type="text" name="name" placeholder="Name" class="w-16 h-6 rounded border border-gray-300 bg-white px-1 text-xs shadow-sm" required>
                                             <input type="number" name="local_port" placeholder="Local" class="w-16 h-6 rounded border border-gray-300 bg-white px-1 text-xs shadow-sm" min="1" max="65535" required>
                                             <span class="text-xs text-gray-400">→</span>
                                             <input type="number" name="target_port" placeholder="Target" class="w-16 h-6 rounded border border-gray-300 bg-white px-1 text-xs shadow-sm" min="1" max="65535" required>
+
+                                          </div>
                                             <button type="submit" class="h-6 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition">➕</button>
                                             <input type="hidden" name="mac" value="{{ m.mac }}">
                                         </form>
