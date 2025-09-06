@@ -1,4 +1,5 @@
-# Wakezilla
+# Wakezilla 🦖
+<img width="2698" height="2012" alt="image" src="https://github.com/user-attachments/assets/667eedeb-431c-4aa2-bf7a-3eadd4221452" />
 
 A simpple Wake-on-LAN solution with HTTP proxy capabilities, remote machine management, and automatic shutdown features.
 
@@ -41,7 +42,7 @@ A simpple Wake-on-LAN solution with HTTP proxy capabilities, remote machine mana
    By default, the web interface runs on port 3000.
 
 ### Client Installation
-
+   make sure the machine was configured with wake on lan.
 1. **Install Rust** (if not already installed):
    ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -53,7 +54,6 @@ A simpple Wake-on-LAN solution with HTTP proxy capabilities, remote machine mana
    git clone <repository-url>
    cd wakezilla
    cargo build --release
-   ```
    ```
 ## Usage
 
