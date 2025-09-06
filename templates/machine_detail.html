@@ -86,6 +86,17 @@
                 <div class="text-xs font-semibold text-gray-500">Requests per Hour</div>
                 <div>{{ machine.request_rate.max_requests }}</div>
             </div>
+            <div>
+                <div class="text-xs font-semibold text-gray-500">Status</div>
+                <div>
+                    <div class="machine-health-badge" data-ip="{{ machine.ip }}" data-turn-off-port="{% if let Some(port) = machine.turn_off_port %}{{ port }}{% else %}0{% endif %}">
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+                            <span class="h-2 w-2 rounded-full bg-green-500 mr-1"></span>
+                            Online
+                        </span>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
     <section class="mt-8">
@@ -120,6 +131,73 @@
         </form>
     </section>
 </div>
+<script>
+    // Machine health check function
+    async function checkMachineHealth(machineIp, turnOffPort) {
+        try {
+            const response = await fetch('/machine/health', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ip: machineIp,
+                    turn_off_port: parseInt(turnOffPort)
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Health check error:', error);
+            return { status: 'error', message: error.message };
+        }
+    }
+    
+    // Update health badge
+    function updateHealthBadge(badge, healthData) {
+        const badgeElement = badge.querySelector('span');
+        const dotElement = badgeElement.querySelector('span');
+        
+        if (healthData.status === 'online') {
+            badgeElement.className = 'inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200';
+            dotElement.className = 'h-2 w-2 rounded-full bg-green-500 mr-1';
+            badgeElement.innerHTML = '<span class="h-2 w-2 rounded-full bg-green-500 mr-1"></span>Online';
+        } else if (healthData.status === 'offline' || healthData.status === 'error') {
+            badgeElement.className = 'inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900 dark:text-red-200';
+            dotElement.className = 'h-2 w-2 rounded-full bg-red-500 mr-1';
+            badgeElement.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-500 mr-1"></span>Offline';
+        } else {
+            badgeElement.className = 'inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200';
+            dotElement.className = 'h-2 w-2 rounded-full bg-gray-400 mr-1';
+            badgeElement.innerHTML = '<span class="h-2 w-2 rounded-full bg-gray-400 mr-1"></span>Unknown';
+        }
+    }
+    
+    // Check health for the current machine
+    async function checkMachineHealthStatus() {
+        const badge = document.querySelector('.machine-health-badge');
+        if (!badge) return;
+        
+        const machineIp = badge.dataset.ip;
+        const turnOffPort = badge.dataset.turnOffPort;
+        
+        const healthData = await checkMachineHealth(machineIp, turnOffPort);
+        updateHealthBadge(badge, healthData);
+    }
+    
+    // Initial health check and periodic updates
+    document.addEventListener('DOMContentLoaded', function() {
+        checkMachineHealthStatus();
+        
+        // Check health every 30 seconds
+        setInterval(checkMachineHealthStatus, 30000);
+    });
+</script>
 </body>
 </html>
 

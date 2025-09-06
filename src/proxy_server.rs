@@ -33,7 +33,7 @@ pub async fn start(port: u16) {
         .route("/scan", get(scan_network_handler))
         .route("/machines", post(add_machine))
         .route("/machines/delete", post(delete_machine))
-        .route("/machines/remote-turn-off", post(turn_off_remote_machine))
+        .route("/machines/health", post(machine_health))
         .route("/machines/add-port-forward", post(add_port_forward))
         .route("/machines/:mac", get(machine_detail))
         .route("/machines/update-ports", post(update_ports))
@@ -179,7 +179,7 @@ async fn update_machine_config(State(state): State<AppState>, Form(payload): For
         if let Some(new_name) = payload.get("name") {
             machine.name = new_name.clone();
         }
-        machine.description = payload.get("description").map(|v| if v.trim().is_empty() { None } else { Some(v.clone()) }).flatten();
+        machine.description = payload.get("description").and_then(|v| if v.trim().is_empty() { None } else { Some(v.clone()) });
         // If the box is present in the form (checked), the value is "true".
         machine.can_be_turned_off = payload.get("can_be_turned_off").is_some();
         if let Some(rph) = payload.get("requests_per_hour") {
@@ -313,5 +313,50 @@ async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode,
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to send WOL packet: {}", e),
         ),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct MachineHealthRequest {
+    ip: String,
+    turn_off_port: Option<u16>,
+}
+
+async fn machine_health(
+    Json(payload): Json<MachineHealthRequest>,
+) -> Json<serde_json::Value> {
+    if let Some(turn_off_port) = payload.turn_off_port {
+        // Make a request to the machine's health endpoint
+        match reqwest::Client::new()
+            .get(format!("http://{}:{}/health", payload.ip, turn_off_port))
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    Json(serde_json::json!({
+                        "status": "online",
+                        "http_status": response.status().as_u16()
+                    }))
+                } else {
+                    Json(serde_json::json!({
+                        "status": "offline",
+                        "http_status": response.status().as_u16()
+                    }))
+                }
+            }
+            Err(_) => {
+                Json(serde_json::json!({
+                    "status": "offline",
+                    "http_status": 0
+                }))
+            }
+        }
+    } else {
+        Json(serde_json::json!({
+            "status": "unknown",
+            "message": "No turn-off port configured"
+        }))
     }
 }

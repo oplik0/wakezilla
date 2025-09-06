@@ -70,6 +70,7 @@
                                 <th class="px-4 py-3 font-semibold">Description</th>
                                 <th class="px-4 py-3 font-semibold">Turn Off Port</th>
                                 <th class="px-4 py-3 font-semibold">Can Be Turned Off</th>
+                                <th class="px-4 py-3 font-semibold">Status</th>
                                 <th class="px-4 py-3 font-semibold">Port Forwards</th>
                                 <th class="px-4 py-3 font-semibold">Action</th>
                             </tr>
@@ -107,7 +108,14 @@
                                             {{ m.can_be_turned_off }}
                                         </span>
                                     </td>
-                                                                        <td class="px-4 py-3">
+                                    <td class="px-4 py-3">
+                                        <div class="machine-health-badge" data-ip="{{ m.ip }}" data-turn-off-port="{% if let Some(port) = m.turn_off_port %}{{ port }}{% else %}0{% endif %}">
+                                            <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                                                <span class="h-2 w-2 rounded-full bg-gray-400 mr-1"></span>
+                                                Checking...
+                                            </span>
+                                        </div>
+                                    </td>
                                         <div class="flex flex-col gap-1">
                                             {% for pf in m.port_forwards %}
                                                 <span class="font-mono text-xs sm:text-sm">{{ pf.local_port }} -> {{ pf.target_port }} ({{ pf.name }})</span>
@@ -385,6 +393,72 @@
             button.disabled = false;
           }
         });
+      });
+      
+      // Machine health check function
+      async function checkMachineHealth(machineIp, turnOffPort) {
+        try {
+          const response = await fetch('/machines/health', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ip: machineIp,
+              turn_off_port: parseInt(turnOffPort)
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          
+          const data = await response.json();
+          return data;
+        } catch (error) {
+          console.error('Health check error:', error);
+          return { status: 'error', message: error.message };
+        }
+      }
+      
+      // Update health badge
+      function updateHealthBadge(badge, healthData) {
+        const badgeElement = badge.querySelector('span');
+        const dotElement = badgeElement.querySelector('span');
+        
+        if (healthData.status === 'online') {
+          badgeElement.className = 'inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200';
+          dotElement.className = 'h-2 w-2 rounded-full bg-green-500 mr-1';
+          badgeElement.innerHTML = '<span class="h-2 w-2 rounded-full bg-green-500 mr-1"></span>Online';
+        } else if (healthData.status === 'offline' || healthData.status === 'error') {
+          badgeElement.className = 'inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900 dark:text-red-200';
+          dotElement.className = 'h-2 w-2 rounded-full bg-red-500 mr-1';
+          badgeElement.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-500 mr-1"></span>Offline';
+        } else {
+          badgeElement.className = 'inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200';
+          dotElement.className = 'h-2 w-2 rounded-full bg-gray-400 mr-1';
+          badgeElement.innerHTML = '<span class="h-2 w-2 rounded-full bg-gray-400 mr-1"></span>Unknown';
+        }
+      }
+      
+      // Check health for all machines
+      async function checkAllMachineHealth() {
+        const badges = document.querySelectorAll('.machine-health-badge');
+        for (const badge of badges) {
+          const machineIp = badge.dataset.ip;
+          const turnOffPort = badge.dataset.turnOffPort;
+          
+          const healthData = await checkMachineHealth(machineIp, turnOffPort);
+          updateHealthBadge(badge, healthData);
+        }
+      }
+      
+      // Initial health check and periodic updates
+      document.addEventListener('DOMContentLoaded', function() {
+        checkAllMachineHealth();
+        
+        // Check health every 30 seconds
+        setInterval(checkAllMachineHealth, 30000);
       });
         </script>
     </body>

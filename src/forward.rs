@@ -70,7 +70,7 @@ pub async fn proxy(
                     );
                     if elapsed > Duration::from_secs(per_minutes as u64 * 60) {
                         count += 1;
-                        if count >= amount_req as u32 {
+                        if count >= amount_req {
                             if let Err(e) =
                                 turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await
                             {
