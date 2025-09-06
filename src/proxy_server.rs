@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tracing::{error, info};
 
+use crate::forward;
 use crate::scanner;
 use crate::web::{self, AppState, DeleteForm, Machine, RemoteTurnOffForm, WakeForm};
-use crate::forward;
 use crate::wol;
 
 pub async fn start(port: u16) {
@@ -38,6 +38,7 @@ pub async fn start(port: u16) {
         .route("/machines/:mac", get(machine_detail))
         .route("/machines/update-ports", post(update_ports))
         .route("/machines/update-config", post(update_machine_config))
+        .route("/machines/remote-turn-off", post(turn_off_remote_machine))
         .route("/wol", post(wake_machine))
         .with_state(state);
 
@@ -71,7 +72,10 @@ async fn scan_network_handler() -> impl IntoResponse {
 
 use axum::extract::Path;
 
-async fn machine_detail(State(state): State<AppState>, Path(mac): Path<String>) -> impl IntoResponse {
+async fn machine_detail(
+    State(state): State<AppState>,
+    Path(mac): Path<String>,
+) -> impl IntoResponse {
     let machines = state.machines.lock().unwrap();
     if let Some(machine) = machines.iter().find(|m| m.mac == mac).cloned() {
         MachineDetailTemplate { machine }.into_response()
@@ -85,7 +89,10 @@ async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
     MachinesTemplate { machines }
 }
 
-async fn add_machine(State(state): State<AppState>, Form(new_machine_form): Form<web::AddMachineForm>) -> Redirect {
+async fn add_machine(
+    State(state): State<AppState>,
+    Form(new_machine_form): Form<web::AddMachineForm>,
+) -> Redirect {
     let new_machine = Machine {
         mac: new_machine_form.mac,
         ip: new_machine_form.ip,
@@ -172,14 +179,23 @@ async fn turn_off_remote_machine(
     )
 }
 
-async fn update_machine_config(State(state): State<AppState>, Form(payload): Form<std::collections::HashMap<String, String>>) -> Redirect {
+async fn update_machine_config(
+    State(state): State<AppState>,
+    Form(payload): Form<std::collections::HashMap<String, String>>,
+) -> Redirect {
     let mac = payload.get("mac").cloned().unwrap_or_default();
     let mut machines = state.machines.lock().unwrap();
     if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
         if let Some(new_name) = payload.get("name") {
             machine.name = new_name.clone();
         }
-        machine.description = payload.get("description").and_then(|v| if v.trim().is_empty() { None } else { Some(v.clone()) });
+        machine.description = payload.get("description").and_then(|v| {
+            if v.trim().is_empty() {
+                None
+            } else {
+                Some(v.clone())
+            }
+        });
         // If the box is present in the form (checked), the value is "true".
         machine.can_be_turned_off = payload.get("can_be_turned_off").is_some();
         if let Some(rph) = payload.get("requests_per_hour") {
@@ -200,7 +216,10 @@ async fn update_machine_config(State(state): State<AppState>, Form(payload): For
     Redirect::to("/")
 }
 
-async fn update_ports(State(state): State<AppState>, Form(payload): Form<std::collections::HashMap<String, String>>) -> Redirect {
+async fn update_ports(
+    State(state): State<AppState>,
+    Form(payload): Form<std::collections::HashMap<String, String>>,
+) -> Redirect {
     let mac = payload.get("mac").cloned().unwrap_or_default();
     let mut machines = state.machines.lock().unwrap();
     if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
@@ -210,11 +229,19 @@ async fn update_ports(State(state): State<AppState>, Form(payload): Form<std::co
             let name_key = format!("pf_name_{}", idx);
             let local_key = format!("pf_local_{}", idx);
             let target_key = format!("pf_target_{}", idx);
-            match (payload.get(&name_key), payload.get(&local_key), payload.get(&target_key)) {
+            match (
+                payload.get(&name_key),
+                payload.get(&local_key),
+                payload.get(&target_key),
+            ) {
                 (Some(name), Some(local), Some(target)) => {
                     let remove_key = format!("pf_remove_{}", idx);
                     let remove_checked = payload.get(&remove_key).is_some();
-                    if !remove_checked && !name.trim().is_empty() && !local.trim().is_empty() && !target.trim().is_empty() {
+                    if !remove_checked
+                        && !name.trim().is_empty()
+                        && !local.trim().is_empty()
+                        && !target.trim().is_empty()
+                    {
                         if let (Ok(local), Ok(target)) = (local.parse(), target.parse()) {
                             ports.push(web::PortForward {
                                 name: name.clone(),
@@ -223,7 +250,7 @@ async fn update_ports(State(state): State<AppState>, Form(payload): Form<std::co
                             });
                         }
                     }
-                },
+                }
                 _ => break,
             }
             idx += 1;
@@ -232,7 +259,7 @@ async fn update_ports(State(state): State<AppState>, Form(payload): Form<std::co
         if let (Some(name), Some(local), Some(target)) = (
             payload.get("pf_name_new"),
             payload.get("pf_local_new"),
-            payload.get("pf_target_new")
+            payload.get("pf_target_new"),
         ) {
             if !name.trim().is_empty() && !local.trim().is_empty() && !target.trim().is_empty() {
                 if let (Ok(local), Ok(target)) = (local.parse(), target.parse()) {
@@ -322,9 +349,7 @@ struct MachineHealthRequest {
     turn_off_port: Option<u16>,
 }
 
-async fn machine_health(
-    Json(payload): Json<MachineHealthRequest>,
-) -> Json<serde_json::Value> {
+async fn machine_health(Json(payload): Json<MachineHealthRequest>) -> Json<serde_json::Value> {
     if let Some(turn_off_port) = payload.turn_off_port {
         // Make a request to the machine's health endpoint
         match reqwest::Client::new()
@@ -346,12 +371,10 @@ async fn machine_health(
                     }))
                 }
             }
-            Err(_) => {
-                Json(serde_json::json!({
-                    "status": "offline",
-                    "http_status": 0
-                }))
-            }
+            Err(_) => Json(serde_json::json!({
+                "status": "offline",
+                "http_status": 0
+            })),
         }
     } else {
         Json(serde_json::json!({

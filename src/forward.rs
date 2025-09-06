@@ -41,8 +41,11 @@ pub async fn proxy(
     let listen_addr = format!("0.0.0.0:{}", local_port);
     let listener = TcpListener::bind(&listen_addr).await?;
     info!(
-        "TCP Forwarder listening on {}, proxying to {}",
-        listen_addr, remote_addr
+        "TCP Forwarder listening on {}, proxying to {}, rate limit: {}/{}min",
+        listen_addr,
+        remote_addr,
+        machine.request_rate.max_requests,
+        machine.request_rate.period_minutes
     );
 
     let last_request_time = Arc::new(Mutex::new(Instant::now()));
