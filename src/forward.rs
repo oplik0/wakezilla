@@ -9,15 +9,25 @@ use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::{error, info, warn};
 
-
-pub async fn turn_off_remote_machine(remote_ip: &str, turn_off_port: u16) -> Result<(), reqwest::Error> {
+pub async fn turn_off_remote_machine(
+    remote_ip: &str,
+    turn_off_port: u16,
+) -> Result<(), reqwest::Error> {
     let url = format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port);
     info!("Sending turn-off signal to {}", url);
     let response = reqwest::Client::new().post(&url).send().await?;
     if response.status().is_success() {
-        info!("Successfully sent turn-off signal to {}:{}", remote_ip, turn_off_port);
+        info!(
+            "Successfully sent turn-off signal to {}:{}",
+            remote_ip, turn_off_port
+        );
     } else {
-        error!("Failed to send turn-off signal to {}:{}, status: {}", remote_ip, turn_off_port, response.status());
+        error!(
+            "Failed to send turn-off signal to {}:{}, status: {}",
+            remote_ip,
+            turn_off_port,
+            response.status()
+        );
     }
     Ok(())
 }
@@ -49,21 +59,23 @@ pub async fn proxy(
             tokio::spawn(async move {
                 let mut count = 0;
                 loop {
-                    tokio::time::sleep(Duration::from_secs(per_minutes as u64 * 60)).await;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                     let elapsed = {
                         let last_time = last_request_time.lock().unwrap();
                         last_time.elapsed()
                     };
                     info!(
-                        "checking for inactivity for machine {} ({}), elapsed: {:?}",
-                        remote_ip, mac, elapsed
+                        "checking for inactivity for machine {} ({}), elapsed: {:?}, per_minutes: {}, amount_req: {}",
+                        remote_ip, mac, elapsed, per_minutes, amount_req
                     );
                     if elapsed > Duration::from_secs(per_minutes as u64 * 60) {
                         count += 1;
                         if count >= amount_req as u32 {
-                            if let Err(e) = turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await {
-                            error!("Failed to send turn-off signal: {}", e);
-                        }
+                            if let Err(e) =
+                                turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await
+                            {
+                                error!("Failed to send turn-off signal: {}", e);
+                            }
                             break;
                         }
                     } else {

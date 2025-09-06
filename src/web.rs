@@ -81,10 +81,8 @@ pub struct AddMachineForm {
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
     pub can_be_turned_off: bool,
-    pub num_requests: Option<u32>,
-    pub interval_minutes: Option<u32>,
-
     pub requests_per_hour: Option<u32>,
+    pub period_minutes: Option<u32>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

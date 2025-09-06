@@ -95,7 +95,7 @@ async fn add_machine(State(state): State<AppState>, Form(new_machine_form): Form
         can_be_turned_off: new_machine_form.can_be_turned_off,
         request_rate: web::RequestRateConfig {
             max_requests: new_machine_form.requests_per_hour.unwrap_or(1000),
-            period_minutes: 60,
+            period_minutes: new_machine_form.period_minutes.unwrap_or(60),
         },
 
         port_forwards: Vec::new(),
@@ -185,6 +185,13 @@ async fn update_machine_config(State(state): State<AppState>, Form(payload): For
         if let Some(rph) = payload.get("requests_per_hour") {
             if let Ok(num) = rph.parse() {
                 machine.request_rate.max_requests = num;
+            }
+        }
+        if let Some(pm) = payload.get("period_minutes") {
+            if let Ok(num) = pm.parse() {
+                if num > 0 {
+                    machine.request_rate.period_minutes = num;
+                }
             }
         }
         let _ = web::save_machines(&machines);
