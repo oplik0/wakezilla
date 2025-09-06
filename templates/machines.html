@@ -71,7 +71,7 @@
                                 <th class="px-4 py-3 font-semibold">Turn Off Port</th>
                                 <th class="px-4 py-3 font-semibold">Can Be Turned Off</th>
                                 <th class="px-4 py-3 font-semibold">Status</th>
-                                <th class="px-4 py-3 font-semibold">Port Forwards</th>
+                                <th class="px-4 py-3 font-semibold w-64">Port Forwards</th>
                                 <th class="px-4 py-3 font-semibold">Action</th>
                             </tr>
                         </thead>
@@ -116,17 +116,22 @@
                                             </span>
                                         </div>
                                     </td>
+                                    <td class="px-4 py-3">
                                         <div class="flex flex-col gap-1">
                                             {% for pf in m.port_forwards %}
                                                 <span class="font-mono text-xs sm:text-sm">{{ pf.local_port }} -> {{ pf.target_port }} ({{ pf.name }})</span>
                                             {% endfor %}
+                                            {% if m.port_forwards.is_empty() %}
+                                                <span class="text-gray-500 text-xs">-</span>
+                                            {% endif %}
                                         </div>
-                                        <form action="/machines/add-port-forward" method="post" class="mt-2 flex flex-wrap gap-2">
+                                        <form action="/machines/add-port-forward" method="post" class="mt-1 flex items-center gap-2">
+                                            <input type="text" name="name" placeholder="Name" class="w-16 h-6 rounded border border-gray-300 bg-white px-1 text-xs shadow-sm" required>
+                                            <input type="number" name="local_port" placeholder="Local" class="w-16 h-6 rounded border border-gray-300 bg-white px-1 text-xs shadow-sm" min="1" max="65535" required>
+                                            <span class="text-xs text-gray-400">→</span>
+                                            <input type="number" name="target_port" placeholder="Target" class="w-16 h-6 rounded border border-gray-300 bg-white px-1 text-xs shadow-sm" min="1" max="65535" required>
+                                            <button type="submit" class="h-6 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition">➕</button>
                                             <input type="hidden" name="mac" value="{{ m.mac }}">
-                                            <input type="text" name="name" placeholder="Name" class="w-20 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs shadow-sm" required>
-                                            <input type="number" name="local_port" placeholder="Local" class="w-20 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs shadow-sm" min="1" max="65535" required>
-                                            <input type="number" name="target_port" placeholder="Target" class="w-20 rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs shadow-sm" min="1" max="65535" required>
-                                            <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-2 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]">➕ Add Port</button>
                                         </form>
                                     </td>
                                     <td class="px-4 py-3">
