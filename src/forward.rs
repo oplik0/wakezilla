@@ -7,7 +7,7 @@ use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::time::Instant;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub async fn turn_off_remote_machine(
     remote_ip: &str,
@@ -64,7 +64,7 @@ pub async fn proxy(
                         let last_time = last_request_time.lock().unwrap();
                         last_time.elapsed()
                     };
-                    info!(
+                    debug!(
                         "checking for inactivity for machine {} ({}), elapsed: {:?}, per_minutes: {}, amount_req: {}",
                         remote_ip, mac, elapsed, per_minutes, amount_req
                     );
