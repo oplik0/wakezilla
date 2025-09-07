@@ -7,8 +7,6 @@
 
 🔌 Automatic shutdown → saves energy by powering down idle machines after configurable thresholds.
 
-🖥 Remote machine control → manage multiple devices with ease, from anywhere on your network.
-
 
 ## Web interface
 <img width="2698" height="2012" alt="image" src="https://github.com/user-attachments/assets/667eedeb-431c-4aa2-bf7a-3eadd4221452" />
