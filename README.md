@@ -1,7 +1,17 @@
 # Wakezilla 🦖
-<img width="2698" height="2012" alt="image" src="https://github.com/user-attachments/assets/667eedeb-431c-4aa2-bf7a-3eadd4221452" />
+<img width="200" height="159" src="https://github.com/user-attachments/assets/e88f084b-47b8-467b-a5c6-d64327805792" align="left" alt="wakezilla"/>
 
-A simple Wake-on-LAN solution with HTTP proxy capabilities, remote machine management, and automatic shutdown features.
+⚡ Wake-on-LAN made simple → power on your machines remotely whenever needed.
+
+🌐 Reverse proxy → intercepts traffic and wakes the server automatically if it’s offline.
+
+🔌 Automatic shutdown → saves energy by powering down idle machines after configurable thresholds.
+
+🖥 Remote machine control → manage multiple devices with ease, from anywhere on your network.
+
+
+## Web interface
+<img width="2698" height="2012" alt="image" src="https://github.com/user-attachments/assets/667eedeb-431c-4aa2-bf7a-3eadd4221452" />
 
 ## Features
 
