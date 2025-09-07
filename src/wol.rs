@@ -1,26 +1,22 @@
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
 use std::time::{Duration, Instant};
+use tokio::net::UdpSocket;
 use tracing::{info, warn};
 
 /// Send WOL magic packets.
-pub fn send_packets(
-    mac: &[u8; 6],
-    bcast: Ipv4Addr,
-    port: u16,
-    count: u32,
-) -> io::Result<()> {
+pub async fn send_packets(mac: &[u8; 6], bcast: Ipv4Addr, port: u16, count: u32) -> io::Result<()> {
     let packet = build_magic_packet(mac);
 
     // Use a UDP socket with broadcast enabled
-    let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+    let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
     sock.set_broadcast(true)?;
 
     let addr = SocketAddrV4::new(bcast, port);
 
     for _ in 0..count {
-        sock.send_to(&packet, addr)?;
-        std::thread::sleep(Duration::from_millis(50));
+        sock.send_to(&packet, addr).await?;
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
     Ok(())
 }
