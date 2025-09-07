@@ -3,9 +3,9 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use tracing::{error, info};
 
+mod client_server;
 mod forward;
 mod proxy_server;
-mod client_server;
 mod scanner;
 mod system;
 mod web;
@@ -105,7 +105,7 @@ async fn main() -> io::Result<()> {
 
             let bcast = args.broadcast.unwrap_or(Ipv4Addr::new(255, 255, 255, 255));
 
-            wol::send_packets(&mac, bcast, args.port, args.count)?;
+            wol::send_packets(&mac, bcast, args.port, args.count).await?;
 
             info!(
                 "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",

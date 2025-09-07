@@ -131,7 +131,7 @@ pub async fn proxy(
                         };
 
                         if let Err(e) =
-                            wol::send_packets(&mac, Ipv4Addr::new(255, 255, 255, 255), wol_port, 3)
+                            wol::send_packets(&mac, Ipv4Addr::new(255, 255, 255, 255), wol_port, 3).await
                         {
                             error!("Failed to send WOL packet for {}: {}", mac_str_clone, e);
                             return;
