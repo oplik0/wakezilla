@@ -1,7 +1,7 @@
 # Wakezilla 🦖
 <img width="2698" height="2012" alt="image" src="https://github.com/user-attachments/assets/667eedeb-431c-4aa2-bf7a-3eadd4221452" />
 
-A simpple Wake-on-LAN solution with HTTP proxy capabilities, remote machine management, and automatic shutdown features.
+A simple Wake-on-LAN solution with HTTP proxy capabilities, remote machine management, and automatic shutdown features.
 
 ## Features
 
