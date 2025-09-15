@@ -80,6 +80,7 @@ pub struct AddMachineForm {
     pub name: String,
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
+    #[serde(default = "default_can_be_turned_off")]
     pub can_be_turned_off: bool,
     pub requests_per_hour: Option<u32>,
     pub period_minutes: Option<u32>,
@@ -96,6 +97,10 @@ pub fn get_default_request_rate() -> RequestRateConfig {
         max_requests: 10,
         period_minutes: 30,
     }
+}
+
+fn default_can_be_turned_off() -> bool {
+    false
 }
 
 #[derive(Clone)]
