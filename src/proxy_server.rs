@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tracing::{error, info};
+use validator::{Validate, ValidationError, ValidationErrors};
 
 use crate::forward;
 use crate::scanner;
@@ -48,10 +49,14 @@ pub async fn start(port: u16) {
     axum::serve(listener, app).await.unwrap();
 }
 
+type FormErrors = HashMap<String, Vec<String>>;
+
 #[derive(Template)]
 #[template(path = "machines.html")]
 struct MachinesTemplate {
     machines: Vec<Machine>,
+    errors: FormErrors,
+    form: Option<web::AddMachineForm>,
 }
 
 #[derive(Template)]
@@ -86,23 +91,46 @@ async fn machine_detail(
 
 async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
     let machines = state.machines.lock().unwrap().clone();
-    MachinesTemplate { machines }
+    MachinesTemplate {
+        machines,
+        errors: HashMap::new(),
+        form: None,
+    }
 }
 
 async fn add_machine(
     State(state): State<AppState>,
-    Form(new_machine_form): Form<web::AddMachineForm>,
-) -> Redirect {
+    Form(form): Form<web::AddMachineForm>,
+) -> impl IntoResponse {
+    if let Err(errors) = form.validate() {
+        let errors_map = errors
+            .field_errors()
+            .iter()
+            .map(|(key, value)| {
+                let error_messages: Vec<String> =
+                    value.iter().map(|error| error.code.to_string()).collect();
+                (key.to_string(), error_messages)
+            })
+            .collect();
+
+        let machines = state.machines.lock().unwrap().clone();
+        return MachinesTemplate {
+            machines,
+            form: Some(form),
+            errors: errors_map,
+        }
+        .into_response();
+    }
     let new_machine = Machine {
-        mac: new_machine_form.mac,
-        ip: new_machine_form.ip,
-        name: new_machine_form.name,
-        description: new_machine_form.description,
-        turn_off_port: new_machine_form.turn_off_port,
-        can_be_turned_off: new_machine_form.can_be_turned_off,
+        mac: form.mac,
+        ip: form.ip.parse().expect("Invalid IP address"),
+        name: form.name,
+        description: form.description,
+        turn_off_port: form.turn_off_port,
+        can_be_turned_off: form.can_be_turned_off,
         request_rate: web::RequestRateConfig {
-            max_requests: new_machine_form.requests_per_hour.unwrap_or(1000),
-            period_minutes: new_machine_form.period_minutes.unwrap_or(60),
+            max_requests: form.requests_per_hour.unwrap_or(1000),
+            period_minutes: form.period_minutes.unwrap_or(60),
         },
 
         port_forwards: Vec::new(),
@@ -112,7 +140,7 @@ async fn add_machine(
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
     }
-    Redirect::to("/")
+    Redirect::to("/").into_response()
 }
 
 async fn delete_machine(
