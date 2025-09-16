@@ -103,7 +103,6 @@ async fn add_machine(
     Form(form): Form<web::AddMachineForm>,
 ) -> impl IntoResponse {
     if let Err(errors) = form.validate() {
-        // get all the error from IP
         let errors_map = errors
             .field_errors()
             .iter()

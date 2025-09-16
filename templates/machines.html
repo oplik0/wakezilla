@@ -253,7 +253,7 @@
           <h3 class="mb-3 text-base font-semibold">Remote Shutdown (optional)</h3>
           <div class="flex items-start gap-3">
             <input type="checkbox" id="can_be_turned_off" name="can_be_turned_off"
-              value="{% if let Some(f) = form %}{{ f.can_be_turned_off }}{% else %}false{% endif %}"
+              value="{% if let Some(f) = form %}{{ f.can_be_turned_off }}{% else %}true{% endif %}"
               class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:ring-offset-gray-900">
             <div>
               <label for="can_be_turned_off" class="text-sm font-medium">Can be turned off remotely</label>
