@@ -1,10 +1,13 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 use tracing::error;
+use validator::{Validate, ValidationError};
 
 use serde::{Deserializer, Serializer};
 use std::str::FromStr;
@@ -31,7 +34,10 @@ const DB_PATH: &str = "machines.json";
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Machine {
     pub mac: String,
-    #[serde(serialize_with = "serialize_ipv4addr", deserialize_with = "deserialize_ipv4addr")]
+    #[serde(
+        serialize_with = "serialize_ipv4addr",
+        deserialize_with = "deserialize_ipv4addr"
+    )]
     pub ip: Ipv4Addr,
     pub name: String,
     pub description: Option<String>,
@@ -73,10 +79,30 @@ pub struct AddPortForwardForm {
     pub target_port: u16,
 }
 
-#[derive(Deserialize)]
+fn validate_ip(ip: &str) -> Result<(), ValidationError> {
+    if ip.parse::<IpAddr>().is_ok() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("Invalid IP address"))
+    }
+}
+
+static MAC_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$").unwrap());
+
+fn validate_mac(mac: &str) -> Result<(), ValidationError> {
+    if MAC_REGEX.is_match(mac) {
+        Ok(())
+    } else {
+        Err(ValidationError::new("Invalid MAC address"))
+    }
+}
+#[derive(Debug, Deserialize, Validate)]
 pub struct AddMachineForm {
+    #[validate(custom(function = "validate_mac"))]
     pub mac: String,
-    pub ip: Ipv4Addr,
+    #[validate(custom(function = "validate_ip"))]
+    pub ip: String,
     pub name: String,
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
@@ -132,7 +158,9 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         state.proxies.lock().unwrap().insert(proxy_key.clone(), tx);
 
         tokio::spawn(async move {
-            if let Err(e) = forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx).await {
+            if let Err(e) =
+                forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx).await
+            {
                 error!(
                     "Forwarder for {} -> {} failed: {}",
                     local_port, remote_addr, e
