@@ -49,13 +49,13 @@ pub async fn start(port: u16) {
     axum::serve(listener, app).await.unwrap();
 }
 
-type FormErros = HashMap<String, Vec<String>>;
+type FormErrors = HashMap<String, Vec<String>>;
 
 #[derive(Template)]
 #[template(path = "machines.html")]
 struct MachinesTemplate {
     machines: Vec<Machine>,
-    errors: FormErros,
+    errors: FormErrors,
     form: Option<web::AddMachineForm>,
 }
 
