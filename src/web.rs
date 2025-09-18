@@ -7,7 +7,7 @@ use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::{RwLock, watch};
-use tracing::error;
+use tracing::{error, info};
 use validator::{Validate, ValidationError};
 
 use serde::{Deserializer, Serializer};
@@ -136,10 +136,21 @@ pub struct AppState {
     pub proxies: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
 }
 
+/// Load machines using the configured database path
 pub fn load_machines() -> Result<Vec<Machine>> {
-    let data = fs::read_to_string(DB_PATH)
-        .with_context(|| format!("Failed to read machines database from {}", DB_PATH))?;
-    serde_json::from_str(&data).with_context(|| "Failed to parse machines database")
+    load_machines_from_path(DB_PATH)
+}
+
+/// Load machines from a specific path
+pub fn load_machines_from_path(path: &str) -> Result<Vec<Machine>> {
+    let data = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read machines database from {}", path))?;
+    
+    let machines: Vec<Machine> = serde_json::from_str(&data)
+        .with_context(|| "Failed to parse machines database")?;
+    
+    info!("Successfully loaded {} machines from database at {:?}", machines.len(), path);
+    Ok(machines)
 }
 
 pub fn save_machines(machines: &[Machine]) -> Result<()> {

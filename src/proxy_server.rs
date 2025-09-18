@@ -372,7 +372,7 @@ async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode,
     let port = 9; // Default WOL port
     let count = 3;
 
-    match wol::send_packets(&mac, bcast, port, count).await {
+    match crate::wol::send_packets(&mac, bcast, port, count, &Default::default()).await {
         Ok(_) => (
             axum::http::StatusCode::OK,
             format!("Sent WOL packet to {}", payload.mac),

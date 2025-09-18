@@ -5,8 +5,8 @@ use tokio::net::UdpSocket;
 use tracing::{info, warn, instrument, debug};
 
 /// Send WOL magic packets.
-#[instrument(name = "send_wol_packets", skip(mac))]
-pub async fn send_packets(mac: &[u8; 6], bcast: Ipv4Addr, port: u16, count: u32) -> Result<()> {
+#[instrument(name = "send_wol_packets", skip(mac, config))]
+pub async fn send_packets(mac: &[u8; 6], bcast: Ipv4Addr, port: u16, count: u32, config: &crate::config::Config) -> Result<()> {
     let packet = build_magic_packet(mac);
     debug!("Built WOL magic packet for MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", 
            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -26,7 +26,7 @@ pub async fn send_packets(mac: &[u8; 6], bcast: Ipv4Addr, port: u16, count: u32)
         sock.send_to(&packet, addr)
             .await
             .context("Failed to send WOL packet")?;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(config.wol_packet_sleeptime()).await;
     }
     
     info!("Successfully sent {} WOL packets to {}:{}", count, bcast, port);
@@ -41,6 +41,7 @@ pub fn check_host(
     wait_secs: u64,
     interval_ms: u64,
     connect_timeout_ms: u64,
+    _config: &crate::config::Config,
 ) -> bool {
     let poll_every = Duration::from_millis(interval_ms);
     let connect_timeout = Duration::from_millis(connect_timeout_ms);

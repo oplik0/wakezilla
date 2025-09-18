@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::net::{IpAddr, Ipv4Addr};
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 
+mod config;
 mod client_server;
 mod forward;
 mod proxy_server;
@@ -33,15 +34,15 @@ enum Commands {
 #[command()]
 struct ServeArgs {
     /// Port to listen on for the web server
-    #[arg(short, long, default_value_t = 3000)]
+    #[arg(short, long, default_value_t = 3000, help_heading = "Proxy Server Options")]
     port: u16,
 }
 
 #[derive(Parser, Debug)]
 #[command()]
 struct ClientServerArgs {
-    /// Port to listen on for the hello server
-    #[arg(short, long, default_value_t = 3001)]
+    /// Port to listen on for the client server
+    #[arg(short, long, default_value_t = 3001, help_heading = "Client Server Options")]
     port: u16,
 }
 
@@ -95,20 +96,30 @@ async fn main() -> Result<()> {
         .with_env_filter(env_filter)
         .init();
 
+    // Load configuration from environment variables
+    let config = config::Config::from_env()
+        .unwrap_or_else(|e| {
+            warn!("Failed to load configuration from environment: {} - using defaults", e);
+            Default::default()
+        });
+
+    info!("Using configuration: server_proxy_port={}, server_client_port={}, wol_default_port={}",
+          config.server.proxy_port, config.server.client_port, config.wol.default_port);
+
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Send(args) => {
-            handle_send_command(args).await?;
+            handle_send_command(args, &config).await?;
         }
-        Commands::ProxyServer(args) => {
-            if let Err(e) = proxy_server::start(args.port).await {
+        Commands::ProxyServer(_args) => {
+            if let Err(e) = proxy_server::start(config.server.proxy_port).await {
                 error!("Proxy server error: {}", e);
                 std::process::exit(1);
             }
         }
-        Commands::ClientServer(args) => {
-            if let Err(e) = client_server::start(args.port).await {
+        Commands::ClientServer(_args) => {
+            if let Err(e) = client_server::start(config.server.client_port).await {
                 error!("Client server error: {}", e);
                 std::process::exit(1);
             }
@@ -118,16 +129,16 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[instrument(name = "handle_send_command", skip(args))]
-async fn handle_send_command(args: SendArgs) -> Result<()> {
+#[instrument(name = "handle_send_command", skip(args, config))]
+async fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<()> {
     info!("Processing WOL send command");
-    
+
     let mac = wol::parse_mac(&args.mac)
         .context("Failed to parse MAC address")?;
 
-    let bcast = args.broadcast.unwrap_or(Ipv4Addr::new(255, 255, 255, 255));
+    let bcast = args.broadcast.unwrap_or(config.get_default_broadcast_addr());
 
-    wol::send_packets(&mac, bcast, args.port, args.count).await
+    wol::send_packets(&mac, bcast, args.port, args.count, config).await
         .context("Failed to send WOL packets")?;
 
     info!(
@@ -144,11 +155,12 @@ async fn handle_send_command(args: SendArgs) -> Result<()> {
             args.wait_secs,
             args.interval_ms,
             args.connect_timeout_ms,
+            config
         ) {
             anyhow::bail!("Host {}:{} did not become reachable within {} seconds", ip, args.check_tcp_port, args.wait_secs);
         }
         info!("Host {}:{} is now reachable", ip, args.check_tcp_port);
     }
-    
+
     Ok(())
 }
