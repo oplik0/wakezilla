@@ -1,3 +1,4 @@
+use crate::connection_pool::ConnectionPool;
 use anyhow::Result;
 use askama_axum::Template;
 use axum::{
@@ -13,7 +14,7 @@ use tokio::{
     net::TcpListener,
     sync::RwLock,
 };
-use tracing::{error, info};
+use tracing::{error, info, debug};
 use validator::Validate;
 
 use crate::forward;
@@ -24,9 +25,19 @@ use crate::wol;
 pub async fn start(port: u16) -> Result<()> {
     let initial_machines = web::load_machines().unwrap_or_default();
 
+    // Create connection pool and start cleanup task
+    let connection_pool = ConnectionPool::new();
+    let cleanup_handle = connection_pool.start_cleanup_task();
+    
+    // Spawn cleanup task
+    tokio::spawn(async move {
+        cleanup_handle.await.ok();
+    });
+
     let state = AppState {
         machines: Arc::new(RwLock::new(initial_machines.clone())),
         proxies: Arc::new(RwLock::new(HashMap::new())),
+        connection_pool,
     };
 
     for machine in &initial_machines {
@@ -171,6 +182,14 @@ async fn delete_machine(
     drop(proxies); // Release the write lock
 
     let mut machines = state.machines.write().await;
+    
+    // Remove connections from pool for this machine's IP
+    if let Some(machine) = machines.iter().find(|m| m.mac == payload.mac) {
+        let target_addr = SocketAddr::from((machine.ip.to_string().parse::<std::net::IpAddr>().unwrap(), 0));
+        state.connection_pool.remove_target(target_addr).await;
+        debug!("Removed connections from pool for machine {}", machine.ip);
+    }
+    
     machines.retain(|m| m.mac != payload.mac);
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);

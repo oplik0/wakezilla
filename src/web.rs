@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use crate::connection_pool::ConnectionPool;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -134,6 +135,7 @@ fn default_can_be_turned_off() -> bool {
 pub struct AppState {
     pub machines: Arc<RwLock<Vec<Machine>>>,
     pub proxies: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
+    pub connection_pool: ConnectionPool,
 }
 
 /// Load machines using the configured database path
@@ -171,8 +173,8 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         // The key for the proxy should probably include the port to be unique
         let proxy_key = format!("{}-{}-{}", machine.mac, local_port, pf.target_port);
         
-        // We need to use tokio::spawn and async block to handle the async lock
         let proxies_clone = state.proxies.clone();
+        let connection_pool_clone = state.connection_pool.clone();
         tokio::spawn(async move {
             let mut proxies = proxies_clone.write().await;
             proxies.insert(proxy_key.clone(), tx);
@@ -180,7 +182,7 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
             // We can't hold the lock across the await, so we need to drop it here
             drop(proxies);
 
-            if let Err(e) = forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx).await {
+            if let Err(e) = forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx, connection_pool_clone).await {
                 error!("Forwarder for {} -> {} failed: {}", local_port, remote_addr, e);
             }
         });

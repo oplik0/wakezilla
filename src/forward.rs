@@ -1,10 +1,11 @@
 use crate::{web::Machine, wol};
+use crate::connection_pool::ConnectionPool;
 use anyhow::{Context, Result};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::copy_bidirectional;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -37,6 +38,7 @@ pub async fn proxy(
     machine: Machine,
     wol_port: u16,
     mut rx: watch::Receiver<bool>,
+    connection_pool: ConnectionPool,
 ) -> Result<()> {
     let listen_addr = format!("0.0.0.0:{}", local_port);
     let listener = TcpListener::bind(&listen_addr)
@@ -117,6 +119,7 @@ pub async fn proxy(
                 let remote_addr_clone = remote_addr;
                 let mac_str_clone = machine.mac.clone();
 
+                let connection_pool_clone = connection_pool.clone();
                 tokio::spawn(async move {
                     let connect_timeout = Duration::from_millis(1000);
                     if !wol::tcp_check(remote_addr_clone, connect_timeout) {
@@ -163,19 +166,26 @@ pub async fn proxy(
                         }
                     }
 
-                    let mut outbound = match TcpStream::connect(remote_addr_clone).await {
-                        Ok(stream) => stream,
+                    let mut outbound = match connection_pool_clone.get_connection(remote_addr_clone).await {
+                        Ok(stream) => {
+                            debug!("Successfully obtained or created connection to {}", remote_addr_clone);
+                            stream
+                        }
                         Err(e) => {
-                            error!("Failed to connect to remote {}: {}", remote_addr_clone, e);
+                            error!("Failed to obtain connection to remote {}: {}", remote_addr_clone, e);
                             return;
                         }
                     };
 
                     if let Err(e) = copy_bidirectional(&mut inbound, &mut outbound).await {
+                        connection_pool_clone.return_connection(remote_addr_clone, outbound).await;
                         warn!(
                             "Error forwarding data between {} and {}: {}",
                             client_addr, remote_addr_clone, e
                         );
+                    } else {
+                        connection_pool_clone.return_connection(remote_addr_clone, outbound).await;
+                        debug!("Successfully completed data transfer for {}", remote_addr_clone);
                     }
                 });
             }

@@ -4,6 +4,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use tracing::{error, info, instrument, warn};
 
 mod config;
+mod connection_pool;
 mod client_server;
 mod forward;
 mod proxy_server;
