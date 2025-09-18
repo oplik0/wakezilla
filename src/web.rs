@@ -1,14 +1,14 @@
+use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
-use tokio::sync::watch;
+use std::sync::Arc;
+use tokio::sync::{RwLock, watch};
 use tracing::error;
 use validator::{Validate, ValidationError};
-use anyhow::{Result, Context};
 
 use serde::{Deserializer, Serializer};
 use std::str::FromStr;
@@ -132,20 +132,19 @@ fn default_can_be_turned_off() -> bool {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub machines: Arc<Mutex<Vec<Machine>>>,
-    pub proxies: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    pub machines: Arc<RwLock<Vec<Machine>>>,
+    pub proxies: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
 }
 
 pub fn load_machines() -> Result<Vec<Machine>> {
     let data = fs::read_to_string(DB_PATH)
         .with_context(|| format!("Failed to read machines database from {}", DB_PATH))?;
-    serde_json::from_str(&data)
-        .with_context(|| "Failed to parse machines database")
+    serde_json::from_str(&data).with_context(|| "Failed to parse machines database")
 }
 
 pub fn save_machines(machines: &[Machine]) -> Result<()> {
-    let data = serde_json::to_string_pretty(machines)
-        .context("Failed to serialize machines data")?;
+    let data =
+        serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
     fs::write(DB_PATH, data)
         .with_context(|| format!("Failed to write machines database to {}", DB_PATH))
 }
@@ -160,16 +159,18 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         let (tx, rx) = watch::channel(true);
         // The key for the proxy should probably include the port to be unique
         let proxy_key = format!("{}-{}-{}", machine.mac, local_port, pf.target_port);
-        state.proxies.lock().unwrap().insert(proxy_key.clone(), tx);
-
+        
+        // We need to use tokio::spawn and async block to handle the async lock
+        let proxies_clone = state.proxies.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx).await
-            {
-                error!(
-                    "Forwarder for {} -> {} failed: {}",
-                    local_port, remote_addr, e
-                );
+            let mut proxies = proxies_clone.write().await;
+            proxies.insert(proxy_key.clone(), tx);
+            
+            // We can't hold the lock across the await, so we need to drop it here
+            drop(proxies);
+
+            if let Err(e) = forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx).await {
+                error!("Forwarder for {} -> {} failed: {}", local_port, remote_addr, e);
             }
         });
     }

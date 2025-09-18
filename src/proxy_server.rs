@@ -1,3 +1,4 @@
+use anyhow::Result;
 use askama_axum::Template;
 use axum::{
     extract::{Form, State},
@@ -7,11 +8,13 @@ use axum::{
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use tokio::net::TcpListener;
+use std::sync::Arc;
+use tokio::{
+    net::TcpListener,
+    sync::RwLock,
+};
 use tracing::{error, info};
-use validator::{Validate};
-use anyhow::Result;
+use validator::Validate;
 
 use crate::forward;
 use crate::scanner;
@@ -22,8 +25,8 @@ pub async fn start(port: u16) -> Result<()> {
     let initial_machines = web::load_machines().unwrap_or_default();
 
     let state = AppState {
-        machines: Arc::new(Mutex::new(initial_machines.clone())),
-        proxies: Arc::new(Mutex::new(HashMap::new())),
+        machines: Arc::new(RwLock::new(initial_machines.clone())),
+        proxies: Arc::new(RwLock::new(HashMap::new())),
     };
 
     for machine in &initial_machines {
@@ -48,7 +51,7 @@ pub async fn start(port: u16) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("listening on http://{}", listener.local_addr()?);
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
@@ -84,7 +87,7 @@ async fn machine_detail(
     State(state): State<AppState>,
     Path(mac): Path<String>,
 ) -> impl IntoResponse {
-    let machines = state.machines.lock().unwrap();
+    let machines = state.machines.read().await;
     if let Some(machine) = machines.iter().find(|m| m.mac == mac).cloned() {
         MachineDetailTemplate { machine }.into_response()
     } else {
@@ -93,7 +96,7 @@ async fn machine_detail(
 }
 
 async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
-    let machines = state.machines.lock().unwrap().clone();
+    let machines = state.machines.read().await.clone();
     MachinesTemplate {
         machines,
         errors: HashMap::new(),
@@ -116,7 +119,7 @@ async fn add_machine(
             })
             .collect();
 
-        let machines = state.machines.lock().unwrap().clone();
+        let machines = state.machines.read().await.clone();
         return MachinesTemplate {
             machines,
             form: Some(form),
@@ -124,6 +127,7 @@ async fn add_machine(
         }
         .into_response();
     }
+    
     let new_machine = Machine {
         mac: form.mac,
         ip: form.ip.parse().expect("Invalid IP address"),
@@ -135,14 +139,16 @@ async fn add_machine(
             max_requests: form.requests_per_hour.unwrap_or(1000),
             period_minutes: form.period_minutes.unwrap_or(60),
         },
-
         port_forwards: Vec::new(),
     };
-    let mut machines = state.machines.lock().unwrap();
+    
+    let mut machines = state.machines.write().await;
     machines.push(new_machine);
+    
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
     }
+    
     Redirect::to("/").into_response()
 }
 
@@ -151,7 +157,8 @@ async fn delete_machine(
     Form(payload): Form<DeleteForm>,
 ) -> Redirect {
     // Stop all proxies associated with this machine
-    state.proxies.lock().unwrap().retain(|key, tx| {
+    let mut proxies = state.proxies.write().await;
+    proxies.retain(|key, tx| {
         if key.starts_with(&payload.mac) {
             if tx.send(false).is_ok() {
                 info!("Sent stop signal to proxy for MAC/key: {}", key);
@@ -161,8 +168,9 @@ async fn delete_machine(
             true // Keep the entry
         }
     });
+    drop(proxies); // Release the write lock
 
-    let mut machines = state.machines.lock().unwrap();
+    let mut machines = state.machines.write().await;
     machines.retain(|m| m.mac != payload.mac);
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
@@ -175,7 +183,7 @@ async fn turn_off_remote_machine(
     Form(payload): Form<RemoteTurnOffForm>,
 ) -> (axum::http::StatusCode, String) {
     let machine = {
-        let machines = state.machines.lock().unwrap();
+        let machines = state.machines.read().await;
         machines.iter().find(|m| m.mac == payload.mac).cloned()
     };
 
@@ -215,7 +223,7 @@ async fn update_machine_config(
     Form(payload): Form<std::collections::HashMap<String, String>>,
 ) -> Redirect {
     let mac = payload.get("mac").cloned().unwrap_or_default();
-    let mut machines = state.machines.lock().unwrap();
+    let mut machines = state.machines.write().await;
     if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
         if let Some(new_name) = payload.get("name") {
             machine.name = new_name.clone();
@@ -252,7 +260,7 @@ async fn update_ports(
     Form(payload): Form<std::collections::HashMap<String, String>>,
 ) -> Redirect {
     let mac = payload.get("mac").cloned().unwrap_or_default();
-    let mut machines = state.machines.lock().unwrap();
+    let mut machines = state.machines.write().await;
     if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
         let mut ports = Vec::new();
         let mut idx = 0;
@@ -306,13 +314,15 @@ async fn update_ports(
         let machine_clone = machine.clone();
         let _ = web::save_machines(&machines);
         // Remove proxies for this mac
-        state.proxies.lock().unwrap().retain(|key, tx| {
+        let mut proxies = state.proxies.write().await;
+        proxies.retain(|key, tx| {
             let should_remove = key.starts_with(&mac);
             if should_remove {
                 let _ = tx.send(false);
             }
             !should_remove
         });
+        drop(proxies); // Release the write lock
         // Restart with new ports
         web::start_proxy_if_configured(&machine_clone, &state);
         return Redirect::to(&format!("/machines/{}", mac));
@@ -324,8 +334,8 @@ async fn add_port_forward(
     State(state): State<AppState>,
     Form(payload): Form<web::AddPortForwardForm>,
 ) -> Redirect {
-    let mut machines_guard = state.machines.lock().unwrap();
-    if let Some(machine) = machines_guard.iter_mut().find(|m| m.mac == payload.mac) {
+    let mut machines = state.machines.write().await;
+    if let Some(machine) = machines.iter_mut().find(|m| m.mac == payload.mac) {
         let new_port_forward = web::PortForward {
             name: payload.name,
             local_port: payload.local_port,
@@ -335,11 +345,11 @@ async fn add_port_forward(
 
         let machine_clone_for_proxy = machine.clone();
 
-        if let Err(e) = web::save_machines(&machines_guard) {
+        if let Err(e) = web::save_machines(&machines) {
             error!("Error saving machines: {}", e);
         }
 
-        drop(machines_guard); // Explicitly drop the mutex guard to end the mutable borrow
+        drop(machines); // Release the write lock
 
         // Start the new proxy
         web::start_proxy_if_configured(&machine_clone_for_proxy, &state);

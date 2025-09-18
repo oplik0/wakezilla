@@ -16,13 +16,9 @@ pub fn shutdown_machine() {
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     let status = if cfg!(target_os = "windows") {
-        Command::new("shutdown")
-            .args(["/s", "/t", "0"])
-            .status()
+        Command::new("shutdown").args(["/s", "/t", "0"]).status()
     } else {
-        Command::new("shutdown")
-            .args(["-h", "now"])
-            .status()
+        Command::new("shutdown").args(["-h", "now"]).status()
     };
 
     match status {

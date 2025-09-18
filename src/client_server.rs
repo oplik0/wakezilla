@@ -1,3 +1,4 @@
+use anyhow::Result;
 use axum::{
     response::{IntoResponse, Json},
     routing::{get, post},
@@ -6,7 +7,6 @@ use axum::{
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tracing::info;
-use anyhow::Result;
 
 use crate::system;
 
@@ -19,7 +19,7 @@ pub async fn start(port: u16) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("listening on http://{}", listener.local_addr()?);
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 

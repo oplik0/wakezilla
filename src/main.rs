@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::net::{IpAddr, Ipv4Addr};
-use tracing::{error, info};
-use anyhow::{Context, Result};
+use tracing::{error, info, instrument};
 
 mod client_server;
 mod forward;
@@ -85,6 +85,7 @@ struct SendArgs {
 }
 
 #[tokio::main]
+#[instrument(name = "wakezilla_main", skip_all)]
 async fn main() -> Result<()> {
     let env_filter =
         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
@@ -98,30 +99,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Send(args) => {
-            let mac = wol::parse_mac(&args.mac). context("Failed to parse MAC address")?;
-
-            let bcast = args.broadcast.unwrap_or(Ipv4Addr::new(255, 255, 255, 255));
-
-            wol::send_packets(&mac, bcast, args.port, args.count).await
-                .context("Failed to send WOL packets")?;
-
-            info!(
-                "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], bcast, args.port
-            );
-
-            // ---- Optional post-WOL reachability check ----
-            if let Some(ip) = args.check_ip {
-                if !wol::check_host(
-                    ip,
-                    args.check_tcp_port,
-                    args.wait_secs,
-                    args.interval_ms,
-                    args.connect_timeout_ms,
-                ) {
-                    anyhow::bail!("Host {}:{} did not become reachable within {} seconds", ip, args.check_tcp_port, args.wait_secs);
-                }
-            }
+            handle_send_command(args).await?;
         }
         Commands::ProxyServer(args) => {
             if let Err(e) = proxy_server::start(args.port).await {
@@ -137,5 +115,40 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+#[instrument(name = "handle_send_command", skip(args))]
+async fn handle_send_command(args: SendArgs) -> Result<()> {
+    info!("Processing WOL send command");
+    
+    let mac = wol::parse_mac(&args.mac)
+        .context("Failed to parse MAC address")?;
+
+    let bcast = args.broadcast.unwrap_or(Ipv4Addr::new(255, 255, 255, 255));
+
+    wol::send_packets(&mac, bcast, args.port, args.count).await
+        .context("Failed to send WOL packets")?;
+
+    info!(
+        "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], bcast, args.port
+    );
+
+    // ---- Optional post-WOL reachability check ----
+    if let Some(ip) = args.check_ip {
+        info!("Performing post-WOL reachability check for {}", ip);
+        if !wol::check_host(
+            ip,
+            args.check_tcp_port,
+            args.wait_secs,
+            args.interval_ms,
+            args.connect_timeout_ms,
+        ) {
+            anyhow::bail!("Host {}:{} did not become reachable within {} seconds", ip, args.check_tcp_port, args.wait_secs);
+        }
+        info!("Host {}:{} is now reachable", ip, args.check_tcp_port);
+    }
+    
     Ok(())
 }

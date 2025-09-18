@@ -1,3 +1,4 @@
+use anyhow::{bail, Context, Result};
 use futures_util::future::join_all;
 use ipnetwork::IpNetwork;
 use pnet::datalink::{self, Channel, Config, NetworkInterface as PnetNetworkInterface};
@@ -9,7 +10,6 @@ use serde::Serialize;
 use std::net::IpAddr;
 use std::time::Duration;
 use tracing::{info, warn};
-use anyhow::{Result, Context, bail};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct DiscoveredDevice {
@@ -38,9 +38,8 @@ pub async fn scan_network() -> Result<Vec<DiscoveredDevice>> {
         .ok_or_else(|| anyhow::anyhow!("Selected interface has no IPv4 address."))?;
 
     let source_ip = ip_network.ip();
-    let network =
-        IpNetwork::new(ip_network.ip(), ip_network.prefix())
-            .context("Failed to create IP network")?;
+    let network = IpNetwork::new(ip_network.ip(), ip_network.prefix())
+        .context("Failed to create IP network")?;
 
     info!(
         "Found network interface to scan: {} on {}",
