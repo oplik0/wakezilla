@@ -10,14 +10,15 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tracing::{error, info};
-use validator::{Validate, ValidationError, ValidationErrors};
+use validator::{Validate};
+use anyhow::Result;
 
 use crate::forward;
 use crate::scanner;
 use crate::web::{self, AppState, DeleteForm, Machine, RemoteTurnOffForm, WakeForm};
 use crate::wol;
 
-pub async fn start(port: u16) {
+pub async fn start(port: u16) -> Result<()> {
     let initial_machines = web::load_machines().unwrap_or_default();
 
     let state = AppState {
@@ -44,9 +45,11 @@ pub async fn start(port: u16) {
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = TcpListener::bind(addr).await.unwrap();
-    info!("listening on http://{}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+    let listener = TcpListener::bind(addr).await?;
+    info!("listening on http://{}", listener.local_addr()?);
+    axum::serve(listener, app).await?;
+    
+    Ok(())
 }
 
 type FormErrors = HashMap<String, Vec<String>>;
@@ -225,7 +228,7 @@ async fn update_machine_config(
             }
         });
         // If the box is present in the form (checked), the value is "true".
-        machine.can_be_turned_off = payload.get("can_be_turned_off").is_some();
+        machine.can_be_turned_off = payload.contains_key("can_be_turned_off");
         if let Some(rph) = payload.get("requests_per_hour") {
             if let Ok(num) = rph.parse() {
                 machine.request_rate.max_requests = num;
@@ -264,7 +267,7 @@ async fn update_ports(
             ) {
                 (Some(name), Some(local), Some(target)) => {
                     let remove_key = format!("pf_remove_{}", idx);
-                    let remove_checked = payload.get(&remove_key).is_some();
+                    let remove_checked = payload.contains_key(&remove_key);
                     if !remove_checked
                         && !name.trim().is_empty()
                         && !local.trim().is_empty()

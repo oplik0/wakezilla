@@ -1,21 +1,24 @@
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
 use tracing::{info, warn};
+use anyhow::{Result, Context};
 
 /// Send WOL magic packets.
-pub async fn send_packets(mac: &[u8; 6], bcast: Ipv4Addr, port: u16, count: u32) -> io::Result<()> {
+pub async fn send_packets(mac: &[u8; 6], bcast: Ipv4Addr, port: u16, count: u32) -> Result<()> {
     let packet = build_magic_packet(mac);
 
     // Use a UDP socket with broadcast enabled
-    let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await?;
-    sock.set_broadcast(true)?;
+    let sock = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).await
+        .context("Failed to bind UDP socket")?;
+    sock.set_broadcast(true)
+        .context("Failed to enable broadcast on socket")?;
 
     let addr = SocketAddrV4::new(bcast, port);
 
     for _ in 0..count {
-        sock.send_to(&packet, addr).await?;
+        sock.send_to(&packet, addr).await
+            .context("Failed to send WOL packet")?;
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     Ok(())
@@ -60,16 +63,17 @@ pub fn tcp_check(addr: SocketAddr, timeout: Duration) -> bool {
 }
 
 /// Parse MAC address from common string formats.
-pub fn parse_mac(s: &str) -> Result<[u8; 6], String> {
+pub fn parse_mac(s: &str) -> Result<[u8; 6]> {
     // Keep only hex digits
     let hex: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
     if hex.len() != 12 {
-        return Err("expected 12 hex digits".into());
+        anyhow::bail!("expected 12 hex digits, got {}", hex.len());
     }
     let mut mac = [0u8; 6];
     for i in 0..6 {
         mac[i] =
-            u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).map_err(|_| "invalid hex in MAC")?;
+            u8::from_str_radix(&hex[2 * i..2 * i + 2], 16)
+                .with_context(|| format!("invalid hex in MAC at position {}: '{}'", i, &hex[2 * i..2 * i + 2]))?;
     }
     Ok(mac)
 }
@@ -78,8 +82,8 @@ pub fn parse_mac(s: &str) -> Result<[u8; 6], String> {
 fn build_magic_packet(mac: &[u8; 6]) -> [u8; 102] {
     let mut pkt = [0u8; 102];
     // 6 bytes of 0xFF
-    for i in 0..6 {
-        pkt[i] = 0xFF;
+    for byte in pkt.iter_mut().take(6) {
+        *byte = 0xFF;
     }
     // 16 repetitions of MAC
     for i in 0..16 {

@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 use tracing::error;
 use validator::{Validate, ValidationError};
+use anyhow::{Result, Context};
 
 use serde::{Deserializer, Serializer};
 use std::str::FromStr;
@@ -135,14 +136,18 @@ pub struct AppState {
     pub proxies: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
 }
 
-pub fn load_machines() -> Result<Vec<Machine>, std::io::Error> {
-    let data = fs::read_to_string(DB_PATH)?;
-    serde_json::from_str(&data).map_err(|e| e.into())
+pub fn load_machines() -> Result<Vec<Machine>> {
+    let data = fs::read_to_string(DB_PATH)
+        .with_context(|| format!("Failed to read machines database from {}", DB_PATH))?;
+    serde_json::from_str(&data)
+        .with_context(|| "Failed to parse machines database")
 }
 
-pub fn save_machines(machines: &[Machine]) -> Result<(), std::io::Error> {
-    let data = serde_json::to_string_pretty(machines)?;
+pub fn save_machines(machines: &[Machine]) -> Result<()> {
+    let data = serde_json::to_string_pretty(machines)
+        .context("Failed to serialize machines data")?;
     fs::write(DB_PATH, data)
+        .with_context(|| format!("Failed to write machines database to {}", DB_PATH))
 }
 
 pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {

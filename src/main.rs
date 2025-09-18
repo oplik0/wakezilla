@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
-use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use tracing::{error, info};
+use anyhow::{Context, Result};
 
 mod client_server;
 mod forward;
@@ -85,7 +85,7 @@ struct SendArgs {
 }
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() -> Result<()> {
     let env_filter =
         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
 
@@ -98,14 +98,12 @@ async fn main() -> io::Result<()> {
 
     match cli.command {
         Commands::Send(args) => {
-            let mac = wol::parse_mac(&args.mac).unwrap_or_else(|e| {
-                error!("Invalid MAC '{}': {}", args.mac, e);
-                std::process::exit(2);
-            });
+            let mac = wol::parse_mac(&args.mac). context("Failed to parse MAC address")?;
 
             let bcast = args.broadcast.unwrap_or(Ipv4Addr::new(255, 255, 255, 255));
 
-            wol::send_packets(&mac, bcast, args.port, args.count).await?;
+            wol::send_packets(&mac, bcast, args.port, args.count).await
+                .context("Failed to send WOL packets")?;
 
             info!(
                 "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
@@ -121,16 +119,21 @@ async fn main() -> io::Result<()> {
                     args.interval_ms,
                     args.connect_timeout_ms,
                 ) {
-                    // Non-zero exit to indicate failure to callers
-                    std::process::exit(3);
+                    anyhow::bail!("Host {}:{} did not become reachable within {} seconds", ip, args.check_tcp_port, args.wait_secs);
                 }
             }
         }
         Commands::ProxyServer(args) => {
-            proxy_server::start(args.port).await;
+            if let Err(e) = proxy_server::start(args.port).await {
+                error!("Proxy server error: {}", e);
+                std::process::exit(1);
+            }
         }
         Commands::ClientServer(args) => {
-            client_server::start(args.port).await;
+            if let Err(e) = client_server::start(args.port).await {
+                error!("Client server error: {}", e);
+                std::process::exit(1);
+            }
         }
     }
 

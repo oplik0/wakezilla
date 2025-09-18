@@ -1,5 +1,4 @@
 use crate::{web::Machine, wol};
-use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -8,6 +7,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
+use anyhow::{Result, Context};
 
 pub async fn turn_off_remote_machine(
     remote_ip: &str,
@@ -37,9 +37,10 @@ pub async fn proxy(
     machine: Machine,
     wol_port: u16,
     mut rx: watch::Receiver<bool>,
-) -> io::Result<()> {
+) -> Result<()> {
     let listen_addr = format!("0.0.0.0:{}", local_port);
-    let listener = TcpListener::bind(&listen_addr).await?;
+    let listener = TcpListener::bind(&listen_addr).await
+        .with_context(|| format!("Failed to bind TCP listener on {}", listen_addr))?;
     info!(
         "TCP Forwarder listening on {}, proxying to {}, rate limit: {}/{}min",
         listen_addr,
@@ -100,7 +101,8 @@ pub async fn proxy(
                 }
             }
             result = listener.accept() => {
-                let (mut inbound, client_addr) = result?;
+                let (mut inbound, client_addr) = result
+                    .context("Failed to accept incoming connection")?;
                 info!(
                     "Accepted connection from {} to forward to {}",
                     client_addr, remote_addr

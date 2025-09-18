@@ -6,18 +6,21 @@ use axum::{
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tracing::info;
+use anyhow::Result;
 
 use crate::system;
 
-pub async fn start(port: u16) {
+pub async fn start(port: u16) -> Result<()> {
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/machines/turn-off", post(turn_off_machine));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = TcpListener::bind(addr).await.unwrap();
-    info!("listening on http://{}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+    let listener = TcpListener::bind(addr).await?;
+    info!("listening on http://{}", listener.local_addr()?);
+    axum::serve(listener, app).await?;
+    
+    Ok(())
 }
 
 async fn health_check() -> impl IntoResponse {
