@@ -54,8 +54,13 @@ pub async fn scan_network() -> Result<Vec<DiscoveredDevice>> {
         scan_with_pnet(pnet_iface, network, source_ip, source_mac)
     })
     .await
-    .context("Failed to join scanning task")?
-    .context("Network scanning failed")?;
+    .context("Failed to join network scanning task")?
+    .context(
+        "Network scanning failed. ARP scanning requires root/administrator privileges \
+         to create raw network sockets. Please run the application with 'sudo' or as administrator. \
+         Alternative: You can try running as administrator User Account Control (UAC) on Windows, \
+         or use 'sudo' on macOS/Linux."
+    )?;
 
     let lookups = discovered_devices_no_hostname
         .into_iter()
@@ -100,7 +105,12 @@ fn scan_with_pnet(
     let (mut tx, mut rx) = match datalink::channel(&interface, config) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => bail!("Unsupported channel type"),
-        Err(e) => bail!("Failed to create channel: {}", e),
+        Err(e) => bail!(
+            "Failed to create raw network socket for ARP scanning: {}. \
+             This requires root/administrator privileges. \
+             Please run the application with 'sudo' or as administrator.",
+            e
+        ),
     };
 
     for target_ip in network.iter() {
