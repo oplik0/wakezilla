@@ -35,3 +35,16 @@ async fn turn_off_machine() -> impl IntoResponse {
         "Shutting down this machine".to_string(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn health_check_returns_ok_json() {
+        let response = health_check().await.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}

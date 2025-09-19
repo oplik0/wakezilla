@@ -217,3 +217,112 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::ENV_LOCK;
+    use std::net::Ipv4Addr;
+    use tempfile::{tempdir, NamedTempFile};
+
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::set_var(key, value.as_os_str());
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(ref original) = self.original {
+                std::env::set_var(self.key, original);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    fn validate_ip_accepts_valid_addresses() {
+        assert!(validate_ip("192.168.0.1").is_ok());
+        assert!(validate_ip("::1").is_ok());
+    }
+
+    #[test]
+    fn validate_ip_rejects_invalid_addresses() {
+        assert!(validate_ip("not-an-ip").is_err());
+        assert!(validate_ip("999.999.999.999").is_err());
+    }
+
+    #[test]
+    fn validate_mac_accepts_common_format() {
+        assert!(validate_mac("AA:BB:CC:DD:EE:FF").is_ok());
+    }
+
+    #[test]
+    fn validate_mac_rejects_bad_input() {
+        assert!(validate_mac("zz:zz:zz:zz:zz:zz").is_err());
+    }
+
+    #[test]
+    fn load_machines_from_path_reads_file() {
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        let json = r#"
+            [
+                {
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "ip": "192.168.1.10",
+                    "name": "Test",
+                    "description": null,
+                    "turn_off_port": 8080,
+                    "can_be_turned_off": true,
+                    "request_rate": {"max_requests": 5, "period_minutes": 10},
+                    "port_forwards": []
+                }
+            ]
+        "#;
+        use std::io::Write;
+        file.write_all(json.as_bytes())
+            .expect("failed to write json");
+        let machines = load_machines_from_path(file.path()).expect("load should succeed");
+        assert_eq!(machines.len(), 1);
+        assert_eq!(machines[0].mac, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(machines[0].ip, Ipv4Addr::new(192, 168, 1, 10));
+    }
+
+    #[test]
+    fn save_machines_writes_using_configured_path() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let tmp_dir = tempdir().expect("failed to create temp dir");
+        let file_path = tmp_dir.path().join("machines.json");
+        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+
+        let machines = vec![Machine {
+            mac: "AA:BB:CC:DD:EE:FF".to_string(),
+            ip: Ipv4Addr::new(10, 0, 0, 1),
+            name: "Test".to_string(),
+            description: Some("Example".to_string()),
+            turn_off_port: Some(9000),
+            can_be_turned_off: true,
+            request_rate: get_default_request_rate(),
+            port_forwards: vec![],
+        }];
+
+        save_machines(&machines).expect("save should succeed");
+
+        let resolved_path = super::machines_db_path();
+        assert_eq!(resolved_path, file_path);
+        assert!(resolved_path.exists(), "machines db path should exist");
+
+        let contents = std::fs::read_to_string(&resolved_path).expect("failed to read file");
+        let data: serde_json::Value = serde_json::from_str(&contents).expect("valid json");
+        assert_eq!(data[0]["mac"], "AA:BB:CC:DD:EE:FF");
+        assert_eq!(data[0]["ip"], "10.0.0.1");
+    }
+}

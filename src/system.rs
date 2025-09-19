@@ -32,3 +32,15 @@ pub fn shutdown_machine() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_local_mac_addresses_returns_vector() {
+        let addrs = get_local_mac_addresses();
+        // Ensure any discovered MAC addresses are non-empty strings.
+        assert!(addrs.iter().all(|addr| !addr.is_empty()));
+    }
+}

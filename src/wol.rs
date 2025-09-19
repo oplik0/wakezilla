@@ -132,6 +132,10 @@ fn build_magic_packet(mac: &[u8; 6]) -> [u8; 102] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use std::io::ErrorKind;
+    use std::net::TcpListener;
+    use std::time::Duration;
 
     #[test]
     fn magic_packet_has_sync_stream_and_repeated_mac() {
@@ -186,5 +190,47 @@ mod tests {
                 input
             );
         }
+    }
+
+    #[test]
+    fn tcp_check_reports_true_when_server_listening() {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+                eprintln!(
+                    "skipping tcp_check_reports_true_when_server_listening: {}",
+                    err
+                );
+                return;
+            }
+            Err(err) => panic!("failed to bind listener: {err}"),
+        };
+        let addr = listener.local_addr().expect("failed to get addr");
+        assert!(tcp_check(addr, Duration::from_millis(100)));
+        drop(listener);
+    }
+
+    #[test]
+    fn check_host_returns_false_when_unreachable() {
+        let config = Config::default();
+        let result = check_host(IpAddr::V4(Ipv4Addr::LOCALHOST), 65_000, 0, 10, 10, &config);
+        assert!(!result);
+    }
+
+    #[test]
+    fn check_host_returns_true_when_host_up() {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+                eprintln!("skipping check_host_returns_true_when_host_up: {}", err);
+                return;
+            }
+            Err(err) => panic!("failed to bind listener: {err}"),
+        };
+        let addr = listener.local_addr().expect("failed to get addr");
+        let config = Config::default();
+        let is_up = check_host(addr.ip(), addr.port(), 1, 10, 50, &config);
+        assert!(is_up);
+        drop(listener);
     }
 }

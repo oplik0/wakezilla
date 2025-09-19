@@ -13,6 +13,9 @@ mod system;
 mod web;
 mod wol;
 
+#[cfg(test)]
+mod test_support;
+
 /// Simple Wake-on-LAN sender + post-WOL reachability check.
 #[derive(Parser, Debug)]
 #[command(author, version, about)]

@@ -249,11 +249,107 @@ impl ConnectionPool {
 #[cfg(test)]
 mod tests {
     use super::ConnectionPool;
+    use std::io::ErrorKind;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::sync::Mutex;
+    use tokio::time::{sleep, timeout, Duration};
 
     #[tokio::test]
     async fn get_stats_reports_zero_when_empty() {
         let pool = ConnectionPool::new();
         let stats = pool.get_stats().await;
         assert_eq!(stats.get("total_pools"), Some(&0));
+    }
+
+    #[tokio::test]
+    async fn connections_are_reused_and_removed() {
+        let listener = match TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => listener,
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    ErrorKind::PermissionDenied | ErrorKind::AddrNotAvailable
+                ) =>
+            {
+                eprintln!(
+                    "skipping connection reuse test because binding TCP sockets is not permitted: {}",
+                    err
+                );
+                return;
+            }
+            Err(err) => panic!("failed to bind listener: {err}"),
+        };
+        let addr = listener.local_addr().expect("failed to read listener addr");
+
+        let accept_count = Arc::new(AtomicUsize::new(0));
+        let sockets = Arc::new(Mutex::new(Vec::new()));
+
+        let acceptor_sockets = sockets.clone();
+        let acceptor_count = accept_count.clone();
+        let accept_task = tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((mut socket, _)) => {
+                        acceptor_count.fetch_add(1, Ordering::SeqCst);
+                        // keep socket alive and respond to simple ping to avoid connection closure
+                        let mut buf = vec![0u8; 16];
+                        if socket.read(&mut buf).await.is_ok() {
+                            let _ = socket.write_all(b"ok").await;
+                        }
+                        acceptor_sockets.lock().await.push(socket);
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let pool = ConnectionPool::new();
+
+        let mut stream = pool
+            .get_connection(addr)
+            .await
+            .expect("failed to create connection");
+        // keep connection alive by writing a small payload
+        let _ = stream.write_all(b"hi").await;
+        expect_accepts(&accept_count, 1).await;
+
+        pool.return_connection(addr, stream).await;
+
+        let mut reused = pool
+            .get_connection(addr)
+            .await
+            .expect("failed to reuse connection");
+        let _ = reused.write_all(b"again").await;
+        expect_accepts(&accept_count, 1).await;
+
+        pool.return_connection(addr, reused).await;
+        pool.remove_target(addr).await;
+
+        let stats = pool.get_stats().await;
+        assert!(stats.get(&addr.to_string()).is_none());
+
+        accept_task.abort();
+    }
+
+    async fn expect_accepts(count: &AtomicUsize, expected: usize) {
+        let waiter = async {
+            loop {
+                if count.load(Ordering::SeqCst) == expected {
+                    return;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        };
+
+        if timeout(Duration::from_secs(2), waiter).await.is_err() {
+            panic!(
+                "timed out waiting for accept count {}, last observed {}",
+                expected,
+                count.load(Ordering::SeqCst)
+            );
+        }
     }
 }
