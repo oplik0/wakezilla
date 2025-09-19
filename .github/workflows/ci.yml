@@ -16,11 +16,11 @@ jobs:
       - name: 🔧 Setup Rust toolchain (stable)
         run: rustup toolchain install stable --profile minimal
 
-      - name: Install Tarpaulin
-        run: cargo install cargo-tarpaulin
-
       - name: ⚡ Cache dependências Rust
         uses: Swatinem/rust-cache@v2
+
+      - name: Install Tarpaulin
+        run: cargo install cargo-tarpaulin
 
       - name: Check formatting
         run: cargo fmt --all -- --check
