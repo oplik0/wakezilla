@@ -1,12 +1,15 @@
+use crate::connection_pool::ConnectionPool;
+use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
-use tokio::sync::watch;
-use tracing::error;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::{watch, RwLock};
+use tracing::{error, info};
 use validator::{Validate, ValidationError};
 
 use serde::{Deserializer, Serializer};
@@ -29,7 +32,13 @@ where
 
 use crate::forward;
 
-const DB_PATH: &str = "machines.json";
+const DEFAULT_DB_PATH: &str = "machines.json";
+
+fn machines_db_path() -> PathBuf {
+    std::env::var("WAKEZILLA_MACHINES_DB_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_DB_PATH))
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Machine {
@@ -131,18 +140,43 @@ fn default_can_be_turned_off() -> bool {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub machines: Arc<Mutex<Vec<Machine>>>,
-    pub proxies: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    pub machines: Arc<RwLock<Vec<Machine>>>,
+    pub proxies: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
+    pub connection_pool: ConnectionPool,
 }
 
-pub fn load_machines() -> Result<Vec<Machine>, std::io::Error> {
-    let data = fs::read_to_string(DB_PATH)?;
-    serde_json::from_str(&data).map_err(|e| e.into())
+/// Load machines using the configured database path
+pub fn load_machines() -> Result<Vec<Machine>> {
+    load_machines_from_path(machines_db_path())
 }
 
-pub fn save_machines(machines: &[Machine]) -> Result<(), std::io::Error> {
-    let data = serde_json::to_string_pretty(machines)?;
-    fs::write(DB_PATH, data)
+/// Load machines from a specific path
+pub fn load_machines_from_path<P: AsRef<Path>>(path: P) -> Result<Vec<Machine>> {
+    let path_ref = path.as_ref();
+    let data = fs::read_to_string(path_ref).with_context(|| {
+        format!(
+            "Failed to read machines database from {}",
+            path_ref.display()
+        )
+    })?;
+
+    let machines: Vec<Machine> =
+        serde_json::from_str(&data).with_context(|| "Failed to parse machines database")?;
+
+    info!(
+        "Successfully loaded {} machines from database at {:?}",
+        machines.len(),
+        path_ref
+    );
+    Ok(machines)
+}
+
+pub fn save_machines(machines: &[Machine]) -> Result<()> {
+    let data =
+        serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
+    let path = machines_db_path();
+    fs::write(&path, data)
+        .with_context(|| format!("Failed to write machines database to {}", path.display()))
 }
 
 pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
@@ -155,11 +189,25 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         let (tx, rx) = watch::channel(true);
         // The key for the proxy should probably include the port to be unique
         let proxy_key = format!("{}-{}-{}", machine.mac, local_port, pf.target_port);
-        state.proxies.lock().unwrap().insert(proxy_key.clone(), tx);
 
+        let proxies_clone = state.proxies.clone();
+        let connection_pool_clone = state.connection_pool.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx).await
+            let mut proxies = proxies_clone.write().await;
+            proxies.insert(proxy_key.clone(), tx);
+
+            // We can't hold the lock across the await, so we need to drop it here
+            drop(proxies);
+
+            if let Err(e) = forward::proxy(
+                local_port,
+                remote_addr,
+                machine_clone,
+                wol_port,
+                rx,
+                connection_pool_clone,
+            )
+            .await
             {
                 error!(
                     "Forwarder for {} -> {} failed: {}",
@@ -167,5 +215,114 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
                 );
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::ENV_LOCK;
+    use std::net::Ipv4Addr;
+    use tempfile::{tempdir, NamedTempFile};
+
+    struct EnvGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let original = std::env::var(key).ok();
+            std::env::set_var(key, value.as_os_str());
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(ref original) = self.original {
+                std::env::set_var(self.key, original);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    fn validate_ip_accepts_valid_addresses() {
+        assert!(validate_ip("192.168.0.1").is_ok());
+        assert!(validate_ip("::1").is_ok());
+    }
+
+    #[test]
+    fn validate_ip_rejects_invalid_addresses() {
+        assert!(validate_ip("not-an-ip").is_err());
+        assert!(validate_ip("999.999.999.999").is_err());
+    }
+
+    #[test]
+    fn validate_mac_accepts_common_format() {
+        assert!(validate_mac("AA:BB:CC:DD:EE:FF").is_ok());
+    }
+
+    #[test]
+    fn validate_mac_rejects_bad_input() {
+        assert!(validate_mac("zz:zz:zz:zz:zz:zz").is_err());
+    }
+
+    #[test]
+    fn load_machines_from_path_reads_file() {
+        let mut file = NamedTempFile::new().expect("failed to create temp file");
+        let json = r#"
+            [
+                {
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "ip": "192.168.1.10",
+                    "name": "Test",
+                    "description": null,
+                    "turn_off_port": 8080,
+                    "can_be_turned_off": true,
+                    "request_rate": {"max_requests": 5, "period_minutes": 10},
+                    "port_forwards": []
+                }
+            ]
+        "#;
+        use std::io::Write;
+        file.write_all(json.as_bytes())
+            .expect("failed to write json");
+        let machines = load_machines_from_path(file.path()).expect("load should succeed");
+        assert_eq!(machines.len(), 1);
+        assert_eq!(machines[0].mac, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(machines[0].ip, Ipv4Addr::new(192, 168, 1, 10));
+    }
+
+    #[test]
+    fn save_machines_writes_using_configured_path() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let tmp_dir = tempdir().expect("failed to create temp dir");
+        let file_path = tmp_dir.path().join("machines.json");
+        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+
+        let machines = vec![Machine {
+            mac: "AA:BB:CC:DD:EE:FF".to_string(),
+            ip: Ipv4Addr::new(10, 0, 0, 1),
+            name: "Test".to_string(),
+            description: Some("Example".to_string()),
+            turn_off_port: Some(9000),
+            can_be_turned_off: true,
+            request_rate: get_default_request_rate(),
+            port_forwards: vec![],
+        }];
+
+        save_machines(&machines).expect("save should succeed");
+
+        let resolved_path = super::machines_db_path();
+        assert_eq!(resolved_path, file_path);
+        assert!(resolved_path.exists(), "machines db path should exist");
+
+        let contents = std::fs::read_to_string(&resolved_path).expect("failed to read file");
+        let data: serde_json::Value = serde_json::from_str(&contents).expect("valid json");
+        assert_eq!(data[0]["mac"], "AA:BB:CC:DD:EE:FF");
+        assert_eq!(data[0]["ip"], "10.0.0.1");
     }
 }

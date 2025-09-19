@@ -1,3 +1,4 @@
+use anyhow::{bail, Context, Result};
 use futures_util::future::join_all;
 use ipnetwork::IpNetwork;
 use pnet::datalink::{self, Channel, Config, NetworkInterface as PnetNetworkInterface};
@@ -17,7 +18,7 @@ pub struct DiscoveredDevice {
     pub hostname: Option<String>,
 }
 
-pub async fn scan_network() -> Result<Vec<DiscoveredDevice>, String> {
+pub async fn scan_network() -> Result<Vec<DiscoveredDevice>> {
     info!("Starting network scan...");
 
     let pnet_iface = datalink::interfaces()
@@ -28,17 +29,17 @@ pub async fn scan_network() -> Result<Vec<DiscoveredDevice>, String> {
                 && iface.mac.is_some()
                 && iface.ips.iter().any(|ip| ip.is_ipv4())
         })
-        .ok_or_else(|| "No suitable network interface found for scanning.".to_string())?;
+        .ok_or_else(|| anyhow::anyhow!("No suitable network interface found for scanning."))?;
 
     let ip_network = pnet_iface
         .ips
         .iter()
         .find(|ip| ip.is_ipv4())
-        .ok_or_else(|| "Selected interface has no IPv4 address.".to_string())?;
+        .ok_or_else(|| anyhow::anyhow!("Selected interface has no IPv4 address."))?;
 
     let source_ip = ip_network.ip();
-    let network =
-        IpNetwork::new(ip_network.ip(), ip_network.prefix()).map_err(|e| e.to_string())?;
+    let network = IpNetwork::new(ip_network.ip(), ip_network.prefix())
+        .context("Failed to create IP network")?;
 
     info!(
         "Found network interface to scan: {} on {}",
@@ -47,13 +48,19 @@ pub async fn scan_network() -> Result<Vec<DiscoveredDevice>, String> {
 
     let source_mac = pnet_iface
         .mac
-        .ok_or_else(|| "Interface has no MAC address".to_string())?;
+        .ok_or_else(|| anyhow::anyhow!("Interface has no MAC address"))?;
 
     let discovered_devices_no_hostname = tokio::task::spawn_blocking(move || {
         scan_with_pnet(pnet_iface, network, source_ip, source_mac)
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .context("Failed to join network scanning task")?
+    .context(
+        "Network scanning failed. ARP scanning requires root/administrator privileges \
+         to create raw network sockets. Please run the application with 'sudo' or as administrator. \
+         Alternative: You can try running as administrator User Account Control (UAC) on Windows, \
+         or use 'sudo' on macOS/Linux."
+    )?;
 
     let lookups = discovered_devices_no_hostname
         .into_iter()
@@ -84,19 +91,26 @@ fn scan_with_pnet(
     network: IpNetwork,
     source_ip: IpAddr,
     source_mac: MacAddr,
-) -> Result<Vec<DiscoveredDevice>, String> {
+) -> Result<Vec<DiscoveredDevice>> {
     let source_ipv4 = match source_ip {
         IpAddr::V4(ip) => ip,
-        _ => return Err("Only IPv4 is supported".to_string()),
+        _ => bail!("Only IPv4 is supported"),
     };
 
-    let mut config = Config::default();
-    config.read_timeout = Some(Duration::from_secs(2));
+    let config = Config {
+        read_timeout: Some(Duration::from_secs(2)),
+        ..Default::default()
+    };
 
     let (mut tx, mut rx) = match datalink::channel(&interface, config) {
         Ok(Channel::Ethernet(tx, rx)) => (tx, rx),
-        Ok(_) => return Err("Unsupported channel type".to_string()),
-        Err(e) => return Err(format!("Failed to create channel: {}", e)),
+        Ok(_) => bail!("Unsupported channel type"),
+        Err(e) => bail!(
+            "Failed to create raw network socket for ARP scanning: {}. \
+             This requires root/administrator privileges. \
+             Please run the application with 'sudo' or as administrator.",
+            e
+        ),
     };
 
     for target_ip in network.iter() {

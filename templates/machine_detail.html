@@ -125,6 +125,10 @@
                 <input type="checkbox" id="can_be_turned_off" name="can_be_turned_off" value="true" {% if machine.can_be_turned_off %}checked{% endif %} />
                 <label for="can_be_turned_off" class="text-sm">Can be turned off remotely</label>
             </div>
+            <div class="grid gap-2" id="turn_off_port_container" style="display: none;">
+                <label for="turn_off_port" class="text-sm font-medium">Turn Off Port</label>
+                <input type="number" id="turn_off_port" name="turn_off_port" min="1" max="65535" value="{% if let Some(port) = machine.turn_off_port %}{{ port }}{% else %}3000{% endif %}" class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-700 dark:bg-gray-950">
+            </div>
             <div class="flex justify-end">
                 <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]">Save Config</button>
             </div>
@@ -190,8 +194,21 @@
         updateHealthBadge(badge, healthData);
     }
     
-    // Initial health check and periodic updates
     document.addEventListener('DOMContentLoaded', function() {
+        // Toggle turn off port field
+        const canTurnOffCheckbox = document.getElementById('can_be_turned_off');
+        const turnOffPortContainer = document.getElementById('turn_off_port_container');
+        if (canTurnOffCheckbox.checked) {
+            turnOffPortContainer.style.display = 'block';
+        }
+        canTurnOffCheckbox.addEventListener('change', () => {
+            if (canTurnOffCheckbox.checked) {
+                turnOffPortContainer.style.display = 'block';
+            } else {
+                turnOffPortContainer.style.display = 'none';
+            }
+        });
+        
         checkMachineHealthStatus();
         
         // Check health every 30 seconds

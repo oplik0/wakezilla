@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Rust toolchain (stable)
+        run: rustup toolchain install stable --profile minimal
+
+      - name: ⚡ Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run tests with tarpaulin
+        env:
+          RUSTFLAGS: -C debuginfo=2
+        run: cargo tarpaulin --workspace --timeout 180 --out Xml

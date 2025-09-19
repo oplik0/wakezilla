@@ -16,13 +16,9 @@ pub fn shutdown_machine() {
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     let status = if cfg!(target_os = "windows") {
-        Command::new("shutdown")
-            .args(["/s", "/t", "0"])
-            .status()
+        Command::new("shutdown").args(["/s", "/t", "0"]).status()
     } else {
-        Command::new("shutdown")
-            .args(["-h", "now"])
-            .status()
+        Command::new("shutdown").args(["-h", "now"]).status()
     };
 
     match status {
@@ -34,5 +30,17 @@ pub fn shutdown_machine() {
         Err(e) => {
             warn!("Failed to execute shutdown command: {}", e);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_local_mac_addresses_returns_vector() {
+        let addrs = get_local_mac_addresses();
+        // Ensure any discovered MAC addresses are non-empty strings.
+        assert!(addrs.iter().all(|addr| !addr.is_empty()));
     }
 }
