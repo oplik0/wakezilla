@@ -161,14 +161,14 @@ fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<()> {
         Ok(handle) => {
             let result = handle.block_on(async {
                 wol::send_packets(&mac, bcast, args.port, args.count, config)
-                .await
-                .context("Failed to send WOL packets")?;
-    
+                    .await
+                    .context("Failed to send WOL packets")?;
+
                 info!(
                     "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], bcast, args.port
                 );
-    
+
                 // ---- Optional post-WOL reachability check ----
                 if let Some(ip) = args.check_ip {
                     info!("Performing post-WOL reachability check for {}", ip);
@@ -189,16 +189,14 @@ fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<()> {
                     }
                     info!("Host {}:{} is now reachable", ip, args.check_tcp_port);
                 }
-    
+
                 Ok(())
             });
             match result {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
             }
-        },
-        Err(_) => {
-            Err(anyhow::anyhow!("No runtime context available"))
         }
+        Err(_) => Err(anyhow::anyhow!("No runtime context available")),
     }
 }

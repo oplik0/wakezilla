@@ -35,16 +35,14 @@ async fn hostname_lookup_integration() {
         hostname: None,
     }];
 
-    let lookups = devices
-        .into_iter()
-        .map(|mut device| {
-            tokio::spawn(async move {
-                if let Ok(ip_addr) = device.ip.parse::<std::net::IpAddr>() {
-                    device.hostname = dns_lookup::lookup_addr(&ip_addr).ok();
-                }
-                device
-            })
-        });
+    let lookups = devices.into_iter().map(|mut device| {
+        tokio::spawn(async move {
+            if let Ok(ip_addr) = device.ip.parse::<std::net::IpAddr>() {
+                device.hostname = dns_lookup::lookup_addr(&ip_addr).ok();
+            }
+            device
+        })
+    });
 
     let results = futures_util::future::join_all(lookups)
         .await

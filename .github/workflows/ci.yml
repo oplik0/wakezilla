@@ -16,7 +16,7 @@ jobs:
       - name: 🔧 Setup Rust toolchain (stable)
         run: rustup toolchain install stable --profile minimal
 
-      - name: ⚡ Cache dependências Rust
+      - name: ⚡ Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
       - name: Install Tarpaulin
