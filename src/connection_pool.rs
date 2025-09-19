@@ -233,14 +233,7 @@ impl ConnectionPool {
 
             loop {
                 interval.tick().await;
-                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let pool = pool.clone();
-                    tokio::spawn(async move {
-                        pool.cleanup_expired().await;
-                    });
-                })) {
-                    warn!("Connection pool cleanup task panicked: {:?}", e);
-                }
+                pool.cleanup_expired().await;
             }
         })
     }

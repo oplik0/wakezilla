@@ -118,9 +118,7 @@ pub fn parse_mac(s: &str) -> Result<[u8; 6]> {
 fn build_magic_packet(mac: &[u8; 6]) -> [u8; 102] {
     let mut pkt = [0u8; 102];
     // 6 bytes of 0xFF
-    for byte in pkt.iter_mut().take(6) {
-        *byte = 0xFF;
-    }
+    pkt[0..6].fill(0xFF);
     // 16 repetitions of MAC
     for i in 0..16 {
         let start = 6 + i * 6;

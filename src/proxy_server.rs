@@ -186,10 +186,7 @@ async fn delete_machine(
 
     // Remove connections from pool for this machine's IP
     if let Some(machine) = machines.iter().find(|m| m.mac == payload.mac) {
-        let target_addr = SocketAddr::from((
-            machine.ip.to_string().parse::<std::net::IpAddr>().unwrap(),
-            0,
-        ));
+        let target_addr = SocketAddr::from((machine.ip, 0));
         state.connection_pool.remove_target(target_addr).await;
         debug!("Removed connections from pool for machine {}", machine.ip);
     }
