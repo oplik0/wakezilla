@@ -250,10 +250,12 @@ impl ConnectionPool {
 mod tests {
     use super::ConnectionPool;
     use std::io::ErrorKind;
+    use std::net::SocketAddr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+    use tokio::net::TcpStream;
     use tokio::sync::Mutex;
     use tokio::time::{sleep, timeout, Duration};
 
@@ -351,5 +353,27 @@ mod tests {
                 count.load(Ordering::SeqCst)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn get_connection_timeout_fails() {
+        let pool = ConnectionPool::new();
+        let target = "127.0.0.1:12345".parse::<SocketAddr>().unwrap();
+        let result = pool.get_connection(target).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn cleanup_expired_can_be_called() {
+        let pool = ConnectionPool::new();
+        pool.cleanup_expired().await;
+        // Just ensure no panic
+    }
+
+    #[tokio::test]
+    async fn start_cleanup_task_can_be_started_and_aborted() {
+        let pool = ConnectionPool::new();
+        let handle = pool.start_cleanup_task();
+        handle.abort();
     }
 }

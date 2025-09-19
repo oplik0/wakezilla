@@ -19,13 +19,13 @@ mod test_support;
 /// Simple Wake-on-LAN sender + post-WOL reachability check.
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
-enum Commands {
+pub enum Commands {
     /// Send WOL packet via CLI
     Send(SendArgs),
     /// Start proxy server
@@ -36,7 +36,7 @@ enum Commands {
 
 #[derive(Parser, Debug)]
 #[command()]
-struct ServeArgs {
+pub struct ServeArgs {
     /// Port to listen on for the web server
     #[arg(
         short,
@@ -49,7 +49,7 @@ struct ServeArgs {
 
 #[derive(Parser, Debug)]
 #[command()]
-struct ClientServerArgs {
+pub struct ClientServerArgs {
     /// Port to listen on for the client server
     #[arg(
         short,
@@ -62,7 +62,7 @@ struct ClientServerArgs {
 
 #[derive(Parser, Debug)]
 #[command()]
-struct SendArgs {
+pub struct SendArgs {
     /// Target MAC address (formats: 00:11:22:33:44:55 or 001122334455, etc.)
     mac: String,
 
@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Send(args) => {
-            handle_send_command(args, &config).await?;
+            handle_send_command(args, &config)?;
         }
         Commands::ProxyServer(_args) => {
             if let Err(e) = proxy_server::start(config.server.proxy_port).await {
@@ -148,7 +148,7 @@ async fn main() -> Result<()> {
 }
 
 #[instrument(name = "handle_send_command", skip(args, config))]
-async fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<()> {
+fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<()> {
     info!("Processing WOL send command");
 
     let mac = wol::parse_mac(&args.mac).context("Failed to parse MAC address")?;
@@ -157,35 +157,48 @@ async fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<
         .broadcast
         .unwrap_or(config.get_default_broadcast_addr());
 
-    wol::send_packets(&mac, bcast, args.port, args.count, config)
-        .await
-        .context("Failed to send WOL packets")?;
-
-    info!(
-        "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], bcast, args.port
-    );
-
-    // ---- Optional post-WOL reachability check ----
-    if let Some(ip) = args.check_ip {
-        info!("Performing post-WOL reachability check for {}", ip);
-        if !wol::check_host(
-            ip,
-            args.check_tcp_port,
-            args.wait_secs,
-            args.interval_ms,
-            args.connect_timeout_ms,
-            config,
-        ) {
-            anyhow::bail!(
-                "Host {}:{} did not become reachable within {} seconds",
-                ip,
-                args.check_tcp_port,
-                args.wait_secs
-            );
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            let result = handle.block_on(async {
+                wol::send_packets(&mac, bcast, args.port, args.count, config)
+                .await
+                .context("Failed to send WOL packets")?;
+    
+                info!(
+                    "Sent WOL magic packet to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} via {}:{}",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], bcast, args.port
+                );
+    
+                // ---- Optional post-WOL reachability check ----
+                if let Some(ip) = args.check_ip {
+                    info!("Performing post-WOL reachability check for {}", ip);
+                    if !wol::check_host(
+                        ip,
+                        args.check_tcp_port,
+                        args.wait_secs,
+                        args.interval_ms,
+                        args.connect_timeout_ms,
+                        config,
+                    ) {
+                        anyhow::bail!(
+                            "Host {}:{} did not become reachable within {} seconds",
+                            ip,
+                            args.check_tcp_port,
+                            args.wait_secs
+                        );
+                    }
+                    info!("Host {}:{} is now reachable", ip, args.check_tcp_port);
+                }
+    
+                Ok(())
+            });
+            match result {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            }
+        },
+        Err(_) => {
+            Err(anyhow::anyhow!("No runtime context available"))
         }
-        info!("Host {}:{} is now reachable", ip, args.check_tcp_port);
     }
-
-    Ok(())
 }

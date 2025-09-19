@@ -260,6 +260,15 @@ async fn update_machine_config(
         });
         // If the box is present in the form (checked), the value is "true".
         machine.can_be_turned_off = payload.contains_key("can_be_turned_off");
+        if let Some(port_str) = payload.get("turn_off_port") {
+            if let Ok(port) = port_str.parse::<u16>() {
+                machine.turn_off_port = Some(port);
+            } else {
+                machine.turn_off_port = None;
+            }
+        } else {
+            machine.turn_off_port = None;
+        }
         if let Some(rph) = payload.get("requests_per_hour") {
             if let Ok(num) = rph.parse() {
                 machine.request_rate.max_requests = num;
@@ -761,6 +770,7 @@ mod tests {
         payload.insert("can_be_turned_off".to_string(), "true".to_string());
         payload.insert("requests_per_hour".to_string(), "15".to_string());
         payload.insert("period_minutes".to_string(), "5".to_string());
+        payload.insert("turn_off_port".to_string(), "8080".to_string());
 
         let response = update_machine_config(State(state.clone()), Form(payload)).await;
         assert_eq!(response.into_response().status(), StatusCode::SEE_OTHER);
@@ -772,6 +782,7 @@ mod tests {
         assert!(updated.can_be_turned_off);
         assert_eq!(updated.request_rate.max_requests, 15);
         assert_eq!(updated.request_rate.period_minutes, 5);
+        assert_eq!(updated.turn_off_port, Some(8080));
     }
 
     #[tokio::test]
