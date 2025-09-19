@@ -1,5 +1,5 @@
-use crate::{web::Machine, wol};
 use crate::connection_pool::ConnectionPool;
+use crate::{web::Machine, wol};
 use anyhow::{Context, Result};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
@@ -16,7 +16,12 @@ pub async fn turn_off_remote_machine(
 ) -> Result<(), reqwest::Error> {
     let url = format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port);
     info!("Sending turn-off signal to {}", url);
-    let response = reqwest::Client::new().post(&url).send().await?;
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()?;
+
+    let response = client.post(&url).send().await?;
     if response.status().is_success() {
         info!(
             "Successfully sent turn-off signal to {}:{}",

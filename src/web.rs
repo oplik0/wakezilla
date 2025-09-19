@@ -1,13 +1,14 @@
-use anyhow::{Context, Result};
 use crate::connection_pool::ConnectionPool;
+use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{RwLock, watch};
+use tokio::sync::{watch, RwLock};
 use tracing::{error, info};
 use validator::{Validate, ValidationError};
 
@@ -31,7 +32,13 @@ where
 
 use crate::forward;
 
-const DB_PATH: &str = "machines.json";
+const DEFAULT_DB_PATH: &str = "machines.json";
+
+fn machines_db_path() -> PathBuf {
+    std::env::var("WAKEZILLA_MACHINES_DB_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_DB_PATH))
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Machine {
@@ -140,26 +147,36 @@ pub struct AppState {
 
 /// Load machines using the configured database path
 pub fn load_machines() -> Result<Vec<Machine>> {
-    load_machines_from_path(DB_PATH)
+    load_machines_from_path(machines_db_path())
 }
 
 /// Load machines from a specific path
-pub fn load_machines_from_path(path: &str) -> Result<Vec<Machine>> {
-    let data = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read machines database from {}", path))?;
-    
-    let machines: Vec<Machine> = serde_json::from_str(&data)
-        .with_context(|| "Failed to parse machines database")?;
-    
-    info!("Successfully loaded {} machines from database at {:?}", machines.len(), path);
+pub fn load_machines_from_path<P: AsRef<Path>>(path: P) -> Result<Vec<Machine>> {
+    let path_ref = path.as_ref();
+    let data = fs::read_to_string(path_ref).with_context(|| {
+        format!(
+            "Failed to read machines database from {}",
+            path_ref.display()
+        )
+    })?;
+
+    let machines: Vec<Machine> =
+        serde_json::from_str(&data).with_context(|| "Failed to parse machines database")?;
+
+    info!(
+        "Successfully loaded {} machines from database at {:?}",
+        machines.len(),
+        path_ref
+    );
     Ok(machines)
 }
 
 pub fn save_machines(machines: &[Machine]) -> Result<()> {
     let data =
         serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
-    fs::write(DB_PATH, data)
-        .with_context(|| format!("Failed to write machines database to {}", DB_PATH))
+    let path = machines_db_path();
+    fs::write(&path, data)
+        .with_context(|| format!("Failed to write machines database to {}", path.display()))
 }
 
 pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
@@ -172,18 +189,30 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
         let (tx, rx) = watch::channel(true);
         // The key for the proxy should probably include the port to be unique
         let proxy_key = format!("{}-{}-{}", machine.mac, local_port, pf.target_port);
-        
+
         let proxies_clone = state.proxies.clone();
         let connection_pool_clone = state.connection_pool.clone();
         tokio::spawn(async move {
             let mut proxies = proxies_clone.write().await;
             proxies.insert(proxy_key.clone(), tx);
-            
+
             // We can't hold the lock across the await, so we need to drop it here
             drop(proxies);
 
-            if let Err(e) = forward::proxy(local_port, remote_addr, machine_clone, wol_port, rx, connection_pool_clone).await {
-                error!("Forwarder for {} -> {} failed: {}", local_port, remote_addr, e);
+            if let Err(e) = forward::proxy(
+                local_port,
+                remote_addr,
+                machine_clone,
+                wol_port,
+                rx,
+                connection_pool_clone,
+            )
+            .await
+            {
+                error!(
+                    "Forwarder for {} -> {} failed: {}",
+                    local_port, remote_addr, e
+                );
             }
         });
     }

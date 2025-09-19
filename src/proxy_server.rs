@@ -10,11 +10,8 @@ use axum::{
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::{
-    net::TcpListener,
-    sync::RwLock,
-};
-use tracing::{error, info, debug};
+use tokio::{net::TcpListener, sync::RwLock};
+use tracing::{debug, error, info};
 use validator::Validate;
 
 use crate::forward;
@@ -28,7 +25,7 @@ pub async fn start(port: u16) -> Result<()> {
     // Create connection pool and start cleanup task
     let connection_pool = ConnectionPool::new();
     let cleanup_handle = connection_pool.start_cleanup_task();
-    
+
     // Spawn cleanup task
     tokio::spawn(async move {
         cleanup_handle.await.ok();
@@ -44,7 +41,18 @@ pub async fn start(port: u16) -> Result<()> {
         web::start_proxy_if_configured(machine, &state);
     }
 
-    let app = Router::new()
+    let app = build_router(state.clone());
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let listener = TcpListener::bind(addr).await?;
+    info!("listening on http://{}", listener.local_addr()?);
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+pub fn build_router(state: AppState) -> Router {
+    Router::new()
         .route("/", get(show_machines))
         .route("/scan", get(scan_network_handler))
         .route("/machines", post(add_machine))
@@ -56,14 +64,7 @@ pub async fn start(port: u16) -> Result<()> {
         .route("/machines/update-config", post(update_machine_config))
         .route("/machines/remote-turn-off", post(turn_off_remote_machine))
         .route("/wol", post(wake_machine))
-        .with_state(state);
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let listener = TcpListener::bind(addr).await?;
-    info!("listening on http://{}", listener.local_addr()?);
-    axum::serve(listener, app).await?;
-
-    Ok(())
+        .with_state(state)
 }
 
 type FormErrors = HashMap<String, Vec<String>>;
@@ -138,7 +139,7 @@ async fn add_machine(
         }
         .into_response();
     }
-    
+
     let new_machine = Machine {
         mac: form.mac,
         ip: form.ip.parse().expect("Invalid IP address"),
@@ -152,14 +153,14 @@ async fn add_machine(
         },
         port_forwards: Vec::new(),
     };
-    
+
     let mut machines = state.machines.write().await;
     machines.push(new_machine);
-    
+
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
     }
-    
+
     Redirect::to("/").into_response()
 }
 
@@ -182,14 +183,17 @@ async fn delete_machine(
     drop(proxies); // Release the write lock
 
     let mut machines = state.machines.write().await;
-    
+
     // Remove connections from pool for this machine's IP
     if let Some(machine) = machines.iter().find(|m| m.mac == payload.mac) {
-        let target_addr = SocketAddr::from((machine.ip.to_string().parse::<std::net::IpAddr>().unwrap(), 0));
+        let target_addr = SocketAddr::from((
+            machine.ip.to_string().parse::<std::net::IpAddr>().unwrap(),
+            0,
+        ));
         state.connection_pool.remove_target(target_addr).await;
         debug!("Removed connections from pool for machine {}", machine.ip);
     }
-    
+
     machines.retain(|m| m.mac != payload.mac);
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
@@ -342,7 +346,7 @@ async fn update_ports(
             !should_remove
         });
         drop(proxies); // Release the write lock
-        // Restart with new ports
+                       // Restart with new ports
         web::start_proxy_if_configured(&machine_clone, &state);
         return Redirect::to(&format!("/machines/{}", mac));
     }

@@ -39,7 +39,11 @@ impl Config {
     /// Load configuration from environment variables
     pub fn from_env() -> Result<Self, config::ConfigError> {
         config::Config::builder()
-            .add_source(config::Environment::with_prefix("WAKEZILLA"))
+            .add_source(
+                config::Environment::with_prefix("WAKEZILLA")
+                    .separator("__")
+                    .try_parsing(true),
+            )
             .build()?
             .try_deserialize()
     }
@@ -288,4 +292,3 @@ impl Config {
         std::time::Duration::from_secs(self.health.system_shutdown_sleep_secs)
     }
 }
-

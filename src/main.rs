@@ -3,9 +3,9 @@ use clap::{Parser, Subcommand};
 use std::net::{IpAddr, Ipv4Addr};
 use tracing::{error, info, instrument, warn};
 
+mod client_server;
 mod config;
 mod connection_pool;
-mod client_server;
 mod forward;
 mod proxy_server;
 mod scanner;
@@ -35,7 +35,12 @@ enum Commands {
 #[command()]
 struct ServeArgs {
     /// Port to listen on for the web server
-    #[arg(short, long, default_value_t = 3000, help_heading = "Proxy Server Options")]
+    #[arg(
+        short,
+        long,
+        default_value_t = 3000,
+        help_heading = "Proxy Server Options"
+    )]
     port: u16,
 }
 
@@ -43,7 +48,12 @@ struct ServeArgs {
 #[command()]
 struct ClientServerArgs {
     /// Port to listen on for the client server
-    #[arg(short, long, default_value_t = 3001, help_heading = "Client Server Options")]
+    #[arg(
+        short,
+        long,
+        default_value_t = 3001,
+        help_heading = "Client Server Options"
+    )]
     port: u16,
 }
 
@@ -98,14 +108,18 @@ async fn main() -> Result<()> {
         .init();
 
     // Load configuration from environment variables
-    let config = config::Config::from_env()
-        .unwrap_or_else(|e| {
-            warn!("Failed to load configuration from environment: {} - using defaults", e);
-            Default::default()
-        });
+    let config = config::Config::from_env().unwrap_or_else(|e| {
+        warn!(
+            "Failed to load configuration from environment: {} - using defaults",
+            e
+        );
+        Default::default()
+    });
 
-    info!("Using configuration: server_proxy_port={}, server_client_port={}, wol_default_port={}",
-          config.server.proxy_port, config.server.client_port, config.wol.default_port);
+    info!(
+        "Using configuration: server_proxy_port={}, server_client_port={}, wol_default_port={}",
+        config.server.proxy_port, config.server.client_port, config.wol.default_port
+    );
 
     let cli = Cli::parse();
 
@@ -134,12 +148,14 @@ async fn main() -> Result<()> {
 async fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<()> {
     info!("Processing WOL send command");
 
-    let mac = wol::parse_mac(&args.mac)
-        .context("Failed to parse MAC address")?;
+    let mac = wol::parse_mac(&args.mac).context("Failed to parse MAC address")?;
 
-    let bcast = args.broadcast.unwrap_or(config.get_default_broadcast_addr());
+    let bcast = args
+        .broadcast
+        .unwrap_or(config.get_default_broadcast_addr());
 
-    wol::send_packets(&mac, bcast, args.port, args.count, config).await
+    wol::send_packets(&mac, bcast, args.port, args.count, config)
+        .await
         .context("Failed to send WOL packets")?;
 
     info!(
@@ -156,9 +172,14 @@ async fn handle_send_command(args: SendArgs, config: &config::Config) -> Result<
             args.wait_secs,
             args.interval_ms,
             args.connect_timeout_ms,
-            config
+            config,
         ) {
-            anyhow::bail!("Host {}:{} did not become reachable within {} seconds", ip, args.check_tcp_port, args.wait_secs);
+            anyhow::bail!(
+                "Host {}:{} did not become reachable within {} seconds",
+                ip,
+                args.check_tcp_port,
+                args.wait_secs
+            );
         }
         info!("Host {}:{} is now reachable", ip, args.check_tcp_port);
     }

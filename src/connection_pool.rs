@@ -30,7 +30,6 @@ const CONNECTION_WAIT_TIMEOUT: Duration = Duration::from_millis(5000);
 #[derive(Debug)]
 struct PooledConnection {
     stream: TcpStream,
-    created_at: Instant,
     last_used: Instant,
 }
 
@@ -39,25 +38,20 @@ impl PooledConnection {
         let now = Instant::now();
         Self {
             stream,
-            created_at: now,
             last_used: now,
         }
     }
 
     fn is_expired(&self) -> bool {
-        self.created_at.elapsed() > Duration::from_secs(CONNECTION_IDLE_TIMEOUT)
+        self.last_used.elapsed() > Duration::from_secs(CONNECTION_IDLE_TIMEOUT)
     }
 
     fn mark_used(&mut self) {
         self.last_used = Instant::now();
     }
 
-    fn get_mut_stream(&mut self) -> &mut TcpStream {
+    fn into_stream(mut self) -> TcpStream {
         self.mark_used();
-        &mut self.stream
-    }
-
-    fn into_stream(self) -> TcpStream {
         self.stream
     }
 }
@@ -218,6 +212,7 @@ impl ConnectionPool {
     }
 
     /// Get statistics about the connection pool
+    #[allow(dead_code)] // Exposed for external metrics consumers even if unused internally
     pub async fn get_stats(&self) -> HashMap<String, usize> {
         let pools = self.pools.read().await;
         let mut stats = HashMap::new();
@@ -251,3 +246,14 @@ impl ConnectionPool {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::ConnectionPool;
+
+    #[tokio::test]
+    async fn get_stats_reports_zero_when_empty() {
+        let pool = ConnectionPool::new();
+        let stats = pool.get_stats().await;
+        assert_eq!(stats.get("total_pools"), Some(&0));
+    }
+}
