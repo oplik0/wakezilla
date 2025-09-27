@@ -2838,6 +2838,7 @@ dependencies = [
  "tempfile",
  "tokio 1.47.1",
  "tower",
+ "tower-http",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",

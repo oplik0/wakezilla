@@ -7,10 +7,14 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use reqwest::Method;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::{net::TcpListener, sync::RwLock};
+use tower::ServiceBuilder;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, error, info};
 use validator::Validate;
 
@@ -42,13 +46,35 @@ pub async fn start(port: u16) -> Result<()> {
     }
 
     let app = build_router(state.clone());
+    let endpoints = api_routes(state.clone());
+    let app = app.merge(endpoints);
 
+    let cors_layer = CorsLayer::new()
+        .allow_origin(Any) // Open access to selected route
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+            Method::HEAD,
+            Method::PATCH,
+        ]);
+
+    let app = app.layer(ServiceBuilder::new().layer(cors_layer).into_inner());
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await?;
     info!("listening on http://{}", listener.local_addr()?);
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+pub fn api_routes(state: AppState) -> Router {
+    Router::new()
+        .route("/api/interfaces", get(list_interfaces_handler))
+        .route("/api/scan", get(scan_network_handler))
+        .with_state(state)
 }
 
 pub fn build_router(state: AppState) -> Router {
