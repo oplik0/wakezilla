@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use gloo_net::http::Request;
 use leptos::{leptos_dom::logging::console_log, prelude::*};
@@ -6,6 +8,7 @@ use leptos_router::{
     StaticSegment,
     components::{A, Route, Router, Routes},
 };
+use validator::Validate;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -521,6 +524,50 @@ struct Machine {
     port_forwards: Vec<PortForward>,
 }
 
+impl validator::Validate for Machine {
+    fn validate(&self) -> Result<(), validator::ValidationErrors> {
+        let mut errors = validator::ValidationErrors::new();
+
+        // Add custom validation logic here if needed
+        // For now, we'll just return Ok
+        if self.name.is_empty() {
+            errors.add("name", validator::ValidationError::new("Name is required"));
+        }
+        let ip = self.ip.parse::<std::net::IpAddr>();
+
+        if ip.is_err() {
+            errors.add("ip", validator::ValidationError::new("Invalid IP address"));
+        }
+
+        if self.mac.is_empty() {
+            errors.add(
+                "mac",
+                validator::ValidationError::new("MAC address is required"),
+            );
+        }
+        let is_valid_mac = self
+            .mac
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit() || *c == ':' || *c == '-')
+            .count()
+            == self.mac.len()
+            && (self.mac.len() == 17 || self.mac.len() == 12);
+
+        if !is_valid_mac {
+            errors.add(
+                "mac",
+                validator::ValidationError::new("Invalid MAC address"),
+            );
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PortForward {
     name: Option<String>,
@@ -531,8 +578,8 @@ struct PortForward {
 #[component]
 fn Navbar() -> impl IntoView {
     view! {
-        <nav class="navbar">
-            <div class="nav-container">
+        <nav class="">
+            <div class="">
                 <img class="sitelogo" src="/logo_site.png" />
                 <div class="nav-links">
                     <A href="/">"Sale"</A>
@@ -545,6 +592,35 @@ fn Navbar() -> impl IntoView {
         </nav>
     }
 }
+
+#[component]
+pub fn ErrorDisplay(
+    erros: ReadSignal<HashMap<String, Vec<String>>>,
+    key: &'static str,
+) -> impl IntoView {
+    view! {
+        {move || {
+            if erros.get().contains_key(key) {
+                let error_messages = erros.get().get(key).cloned().unwrap_or_default();
+                Some(
+                    view! {
+                        <div class="error-message">
+                            <For
+                                each=move || error_messages.clone().into_iter()
+                                key=|msg| msg.clone()
+                                children=move |msg| {
+                                    view! { <p>{msg}</p> }
+                                }
+                            />
+                        </div>
+                    },
+                )
+            } else {
+                None
+            }
+        }}
+    }
+}
 // Components
 #[component]
 fn App() -> impl IntoView {
@@ -554,16 +630,6 @@ fn App() -> impl IntoView {
         <Html attr:lang="en" />
         <Stylesheet id="leptos" href="/style/main.css" />
         <Title text="Wakezilla" />
-        <Stylesheet href="https://cdn.tailwindcss.com" />
-        <head>
-            <meta charset="UTF-8" />
-            <meta
-                name="viewport"
-                content="width=device-width, initial-scale=1, viewport-fit=cover"
-            />
-            <title>Wakezilla</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-        </head>
         <Router>
             <main class="container">
                 <Routes fallback=|| "Page not found">
@@ -575,7 +641,7 @@ fn App() -> impl IntoView {
 }
 
 #[component]
-fn Header() -> impl IntoView {
+fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
     let (discovered_devices, set_discovered_devices) = signal::<Vec<DiscoveredDevice>>(vec![]);
     let (interfaces, set_interfaces) = signal::<Vec<NetworkInterface>>(vec![]);
     let (interface, set_interface) = signal::<String>("".to_string());
@@ -588,10 +654,6 @@ fn Header() -> impl IntoView {
                 set_interfaces.set(cats);
             }
         });
-    });
-
-    Effect::new(move |loading| {
-        console_log(&format!("Loading state changed"));
     });
 
     fn handle_interface_change(value: String, set_interface: WriteSignal<String>) {
@@ -622,18 +684,36 @@ fn Header() -> impl IntoView {
         });
     };
 
+    fn handle_add_machine(device: DiscoveredDevice, set_machine: WriteSignal<Machine>) {
+        let new_machine = Machine {
+            name: device
+                .hostname
+                .clone()
+                .unwrap_or_else(|| "Unnamed Device".to_string()),
+            mac: device.mac.clone(),
+            ip: device.ip.clone(),
+            description: None,
+            turn_off_port: None,
+            can_be_turned_off: false,
+            port_forwards: vec![],
+        };
+        set_machine.set(new_machine);
+    }
+
     view! {
-        <header class="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div class="">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight">Wakezilla Manager</h1>
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    Wake, manage, and forward to your registered machines.
-                </p>
+                <h1 class="">Wakezilla Manager</h1>
+                <p class="">Wake, manage, and forward to your registered machines.</p>
             </div>
-            <form on:submit=on_submit class="flex items-center gap-2">
+            <form
+                on:submit=on_submit
+                class=""
+                style="margin-top: 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem; align-items: center;"
+            >
                 <select
                     id="interface-select"
-                    class="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+                    class=""
                     on:change:target=move |ev| {
                         handle_interface_change(ev.target().value(), set_interface);
                     }
@@ -656,61 +736,50 @@ fn Header() -> impl IntoView {
                             .collect::<Vec<_>>()
                     }}
                 </select>
-                <button
-                    id="scan-btn"
-                    class="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-gray-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
-                >
-                    {"🔍"}
-                    Scan Network
+                <button id="scan-btn" class="" disabled=move || loading.get()>
+                    {move || {
+                        if loading.get() { "🔍 Scanning  ...." } else { "🔍 Scan Network" }
+                    }}
                 </button>
             </form>
 
-        </header>
-        <p>{move || if loading.get() { "Scanning..." } else { "" }}</p>
+        </div>
         <Show when=move || { !discovered_devices.get().is_empty() } fallback=|| view! { "" }>
 
             <section id="scan-results-container">
-                <div class="mb-3 flex items-center justify-between">
-                    <h2 class="text-lg font-semibold">Discovered Devices</h2>
-                    <span
-                        id="scan-status"
-                        class="text-sm text-gray-500 dark:text-gray-400"
-                        aria-live="polite"
-                    ></span>
+                <div class="">
+                    <h3 style="eargin-top: 1rem; margin-bottom: 1rem;">Discovered Devices</h3>
+                    <span id="scan-status" class="" aria-live="polite"></span>
                 </div>
-                <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                    <table id="scan-results-table" class="min-w-full text-left text-sm">
-                        <thead class="bg-gray-50 text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+                <div class="">
+                    <table id="scan-results-table" style="width: 100%;">
+                        <thead class="">
                             <tr>
-                                <th class="px-4 py-3 font-semibold">IP Address</th>
-                                <th class="px-4 py-3 font-semibold">Hostname</th>
-                                <th class="px-4 py-3 font-semibold">MAC Address</th>
-                                <th class="px-4 py-3 font-semibold">Action</th>
+                                <th class="">IP Address</th>
+                                <th class="">Hostname</th>
+                                <th class="">MAC Address</th>
+                                <th class="">Action</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        <tbody class="">
                             <For
                                 each=move || discovered_devices.get()
                                 key=|device| device.ip.clone()
                                 children=move |device| {
                                     view! {
                                         <tr>
-                                            <td class="px-4 py-3 font-mono text-xs sm:text-sm">
-                                                {device.ip.clone()}
-                                            </td>
-                                            <td class="px-4 py-3 text-xs sm:text-sm">
+                                            <td class="">{device.ip.clone()}</td>
+                                            <td class="">
                                                 {device
                                                     .hostname
                                                     .clone()
                                                     .unwrap_or_else(|| "N/A".to_string())}
                                             </td>
-                                            <td class="px-4 py-3 font-mono text-xs sm:text-sm">
-                                                {device.mac.clone()}
-                                            </td>
+                                            <td class="">{device.mac.clone()}</td>
                                             <td class="px-4 py-3">
-                                                <button class="text-blue-600 hover:underline text-sm">
-                                                    "Wake"
-                                                </button>
+                                                <button on:click=move |_| {
+                                                    handle_add_machine(device.clone(), set_machine.clone());
+                                                }>{"＋"}</button>
                                             </td>
                                         </tr>
                                     }
@@ -812,8 +881,255 @@ fn RegistredMachines() -> impl IntoView {
 }
 
 #[component]
+fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -> impl IntoView {
+    let (machine_form_data, set_machine_form_data) = create_signal::<Machine>(machine.get());
+    let (erros, set_errors) = create_signal::<HashMap<String, Vec<String>>>(HashMap::new());
+
+    // Update the local signal when the incoming signal changes
+    Effect::new(move |_| {
+        set_machine_form_data.set(machine.get());
+    });
+
+    fn set_input_value(
+        key: &str,
+        value: String,
+        set_machine_form_data: WriteSignal<Machine>,
+        machine_form_data: ReadSignal<Machine>,
+    ) {
+        console_log(&format!("Setting {} to {}", key, value));
+        let mut current = machine_form_data.get();
+        match key {
+            "name" => current.name = value,
+            "mac" => current.mac = value,
+            "ip" => current.ip = value,
+            "description" => current.description = Some(value),
+            "turn_off_port" => {
+                current.turn_off_port = value.parse().ok();
+            }
+            "can_be_turned_off" => {
+                current.can_be_turned_off = value == "on";
+            }
+            _ => {}
+        };
+        set_machine_form_data.set(current);
+    }
+
+    let on_submit = move |ev: SubmitEvent| {
+        // stop the page from reloading!
+        ev.prevent_default();
+        match machine_form_data.get().validate() {
+            Ok(_) => {
+                console::log_1(&"Form is valid".into());
+                // Update the parent machine signal with the form data
+                set_machine.set(machine_form_data.get());
+            }
+            Err(e) => {
+                let mut new_errors = HashMap::new();
+                console::log_1(&format!("Form is invalid: {:?}", e).into());
+                for (field, errors) in e.field_errors() {
+                    let mut field_errors = vec![];
+                    console::log_1(&format!("Field: {}", field).into());
+                    for error in errors {
+                        console_log(&format!(" - Code: {}", error.code));
+                        field_errors.push(error.code.to_string());
+                        console::log_1(
+                            &format!(" - Error: {}", error.message.clone().unwrap_or_default())
+                                .into(),
+                        );
+                    }
+                    new_errors.insert(field.to_string(), field_errors);
+                }
+                set_errors.set(new_errors);
+                return;
+            }
+        }
+
+        console::log_1(&format!("Form submitted with data: {:?}", ev).into());
+    };
+
+    view! {
+        <section style="margin-top: 2rem; margin-bottom: 2rem;">
+            <div class="">
+                <h3 class="">Add New Machine {move || machine_form_data.get().ip}</h3>
+            </div>
+            <form on:submit=on_submit class="">
+                <div>
+                    <div class="form-fields">
+                        <label for="name" class="">
+                            "Name"
+                        </label>
+                        <input
+                            type="text"
+                            id="name"
+                            name="name"
+                            required
+                            class=""
+                            on:input:target=move |ev| {
+                                let input_value = ev.target().value();
+                                set_input_value(
+                                    "name",
+                                    input_value,
+                                    set_machine_form_data.clone(),
+                                    machine_form_data.clone(),
+                                );
+                            }
+                            prop:value=machine_form_data.get().name
+                        />
+                    </div>
+
+                    <ErrorDisplay erros=erros key="name" />
+                </div>
+                <div>
+                    <div class="form-fields">
+                        <label for="mac" class="">
+                            "MAC Address"
+                        </label>
+                        <input
+                            type="text"
+                            id="mac"
+                            name="mac"
+                            required
+                            class=""
+                            on:input:target=move |ev| {
+                                let input_value = ev.target().value();
+                                set_input_value(
+                                    "mac",
+                                    input_value,
+                                    set_machine_form_data.clone(),
+                                    machine_form_data.clone(),
+                                );
+                            }
+                            prop:value=move || machine_form_data.get().mac
+                        />
+
+                    </div>
+                    <ErrorDisplay erros=erros key="mac" />
+                </div>
+                <div>
+                    <div class="form-fields">
+                        <label for="ip" class="">
+                            "IP Address"
+                        </label>
+                        <input
+                            required
+                            on:input:target=move |ev| {
+                                let input_value = ev.target().value();
+                                set_input_value(
+                                    "ip",
+                                    input_value,
+                                    set_machine_form_data.clone(),
+                                    machine_form_data.clone(),
+                                );
+                            }
+                            prop:value=move || machine_form_data.get().ip
+                            type="text"
+                            id="ip"
+                            name="ip"
+                            class=""
+                        />
+
+                    </div>
+                    <ErrorDisplay erros=erros key="ip" />
+                </div>
+                <div>
+                    <div class="form-fields">
+                        <label for="description" class="">
+                            "Description (optional)"
+                        </label>
+                        <input
+                            id="description"
+                            on:input:target=move |ev| {
+                                let input_value = ev.target().value();
+                                set_input_value(
+                                    "description",
+                                    input_value,
+                                    set_machine_form_data.clone(),
+                                    machine_form_data.clone(),
+                                );
+                            }
+
+                            prop:value=machine_form_data
+                                .get()
+                                .description
+                                .clone()
+                                .unwrap_or_default()
+                            name="description"
+                            class=""
+                        />
+                    </div>
+                    <ErrorDisplay erros=erros key="description" />
+                </div>
+                <div>
+                    <div class="form-fields">
+                        <label for="turn_off_port" class="">
+                            "Turn Off Port (optional)"
+                        </label>
+                        <input
+                            type="number"
+                            on:input:target=move |ev| {
+                                let input_value = ev.target().value();
+                                set_input_value(
+                                    "turn_off_port",
+                                    input_value,
+                                    set_machine_form_data.clone(),
+                                    machine_form_data.clone(),
+                                );
+                            }
+                            id="turn_off_port"
+                            name="turn_off_port"
+                            class=""
+                        />
+                        <ErrorDisplay erros=erros key="turn_off_port" />
+                    </div>
+                </div>
+                <div class="form-fields">
+                    <label for="can_be_turned_off" class="">
+                        "Can be turned off"
+                    </label>
+                    <input
+                        type="checkbox"
+                        on:input:target=move |ev| {
+                            let input_value = if ev.target().checked() { "on" } else { "off" }
+                                .to_string();
+                            set_input_value(
+                                "can_be_turned_off",
+                                input_value,
+                                set_machine_form_data.clone(),
+                                machine_form_data.clone(),
+                            );
+                        }
+                        prop:checked=machine_form_data.get().can_be_turned_off
+                        id="can_be_turned_off"
+                        name="can_be_turned_off"
+                        class=""
+                    />
+                </div>
+                <div style="font-size:21px; display: flex;justify-content: center;">
+
+                    <button type="submit" class="submit-button submit-button:hover">
+                        "Add Machine"
+                    </button>
+                </div>
+            </form>
+        </section>
+    }
+}
+#[component]
 fn HomePage() -> impl IntoView {
-    view! { <Header /> }
+    let default_machine = Machine {
+        name: "".to_string(),
+        mac: "".to_string(),
+        ip: "".to_string(),
+        description: None,
+        turn_off_port: None,
+        can_be_turned_off: false,
+        port_forwards: vec![],
+    };
+    let (machine, set_machine) = signal::<Machine>(default_machine);
+    view! {
+        <Header set_machine=set_machine />
+        <AddMachine machine=machine set_machine=set_machine />
+    }
 }
 
 fn main() {
