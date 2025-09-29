@@ -2,7 +2,7 @@ use crate::connection_pool::ConnectionPool;
 use anyhow::Result;
 use askama_axum::Template;
 use axum::{
-    extract::{Form, Query, State},
+    extract::{Form, Json as JsonExtract, Query, State},
     response::{IntoResponse, Json, Redirect},
     routing::{get, post},
     Router,
@@ -49,17 +49,7 @@ pub async fn start(port: u16) -> Result<()> {
     let endpoints = api_routes(state.clone());
     let app = app.merge(endpoints);
 
-    let cors_layer = CorsLayer::new()
-        .allow_origin(Any) // Open access to selected route
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::DELETE,
-            Method::OPTIONS,
-            Method::HEAD,
-            Method::PATCH,
-        ]);
+    let cors_layer = CorsLayer::permissive();
 
     let app = app.layer(ServiceBuilder::new().layer(cors_layer).into_inner());
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -74,6 +64,10 @@ pub fn api_routes(state: AppState) -> Router {
     Router::new()
         .route("/api/interfaces", get(list_interfaces_handler))
         .route("/api/scan", get(scan_network_handler))
+        .route(
+            "/api/machines",
+            get(show_machines_api).post(add_machine_api),
+        )
         .with_state(state)
 }
 
@@ -143,6 +137,60 @@ async fn machine_detail(
     } else {
         axum::http::StatusCode::NOT_FOUND.into_response()
     }
+}
+
+async fn add_machine_api(
+    State(state): State<AppState>,
+    JsonExtract(payload): JsonExtract<web::AddMachineForm>,
+) -> impl IntoResponse {
+    if let Err(errors) = payload.validate() {
+        let errors_map = errors
+            .field_errors()
+            .iter()
+            .map(|(key, value)| {
+                let error_messages: Vec<String> =
+                    value.iter().map(|error| error.code.to_string()).collect();
+                (key.to_string(), error_messages)
+            })
+            .collect::<HashMap<_, _>>();
+
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "errors": errors_map })),
+        );
+    }
+    let new_machine = Machine {
+        mac: payload.mac,
+        ip: payload.ip.parse().expect("Invalid IP address"),
+        name: payload.name,
+        description: payload.description,
+        turn_off_port: payload.turn_off_port,
+        can_be_turned_off: payload.can_be_turned_off,
+        request_rate: web::RequestRateConfig {
+            max_requests: payload.requests_per_hour.unwrap_or(1000),
+            period_minutes: payload.period_minutes.unwrap_or(60),
+        },
+        port_forwards: Vec::new(),
+    };
+    let mut machines = state.machines.write().await;
+    machines.push(new_machine);
+    if let Err(e) = web::save_machines(&machines) {
+        error!("Error saving machines: {}", e);
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "Failed to save machines" })),
+        );
+    }
+    (
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::json!({ "status": "Machine added" })),
+    )
+}
+
+async fn show_machines_api(State(state): State<AppState>) -> impl IntoResponse {
+    let mut machines = state.machines.read().await.clone();
+    machines.reverse();
+    Json(machines)
 }
 
 async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {

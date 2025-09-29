@@ -196,6 +196,16 @@ async fn create_category(dto: CreateCategoryDto) -> Result<Category, String> {
         .map_err(|e| e.to_string())
 }
 
+async fn create_machine(machine: Machine) -> Result<(), String> {
+    Request::post(&format!("{}/machines", API_BASE))
+        .json(&machine)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
 async fn update_category(id: Uuid, dto: UpdateCategoryDto) -> Result<Category, String> {
     Request::put(&format!("{}/categories/{}", API_BASE, id))
         .json(&dto)
@@ -480,6 +490,16 @@ pub struct NetworkInterface {
     pub is_up: bool,
 }
 
+async fn fetch_machines() -> Result<Vec<Machine>, String> {
+    Request::get(&format!("{}/machines", API_BASE))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 async fn fetch_interfaces() -> Result<Vec<NetworkInterface>, String> {
     Request::get(&format!("{}/interfaces", API_BASE))
         .send()
@@ -513,13 +533,13 @@ async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>, Str
         .map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct Machine {
     name: String,
     mac: String,
     ip: String,
     description: Option<String>,
-    turn_off_port: Option<u16>,
+    turn_off_port: Option<u32>,
     can_be_turned_off: bool,
     port_forwards: Vec<PortForward>,
 }
@@ -537,6 +557,16 @@ impl validator::Validate for Machine {
 
         if ip.is_err() {
             errors.add("ip", validator::ValidationError::new("Invalid IP address"));
+        }
+
+        // check if turn_off_port is Some and in range 1-65535
+        if let Some(port) = self.turn_off_port {
+            if 0 == port || port > 65535 {
+                errors.add(
+                    "turn_off_port",
+                    validator::ValidationError::new("Port must be between 1 and 65535"),
+                );
+            }
         }
 
         if self.mac.is_empty() {
@@ -568,7 +598,7 @@ impl validator::Validate for Machine {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct PortForward {
     name: Option<String>,
     local_port: u16,
@@ -686,10 +716,7 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
 
     fn handle_add_machine(device: DiscoveredDevice, set_machine: WriteSignal<Machine>) {
         let new_machine = Machine {
-            name: device
-                .hostname
-                .clone()
-                .unwrap_or_else(|| "Unnamed Device".to_string()),
+            name: device.hostname.clone().unwrap_or_else(|| "".to_string()),
             mac: device.mac.clone(),
             ip: device.ip.clone(),
             description: None,
@@ -794,78 +821,102 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
 }
 
 #[component]
-fn RegistredMachines() -> impl IntoView {
-    let machines = vec![Machine {
-        name: "Work Laptop".to_string(),
-        mac: "AA:BB:CC:DD:EE:FF".to_string(),
-        ip: "192.168.0.1".to_string(),
-        description: Some("My work laptop".to_string()),
-        turn_off_port: Some(9),
-        can_be_turned_off: true,
-        port_forwards: vec![
-            PortForward {
-                name: Some("SSH".to_string()),
-                local_port: 22,
-                target_port: 2222,
-            },
-            PortForward {
-                name: Some("Web".to_string()),
-                local_port: 80,
-                target_port: 8080,
-            },
-        ],
-    }];
-
+fn RegistredMachines(machines: ReadSignal<Vec<Machine>>) -> impl IntoView {
     view! {
-        <section class="mt-8">
-            <div class="mb-3 flex items-center justify-between">
-                <h2 class="text-lg font-semibold">Registered Machines</h2>
+        <section class="" style="width: 100%; margin-top: 2rem;">
+            <div
+                class=""
+                style="width: 100%; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;"
+            >
+                <h2 class="" style="font-size: 1.125rem; font-weight: 600;">
+                    Registered Machines
+                </h2>
             </div>
-            <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <table class="min-w-full text-left text-sm">
-                    <thead class="bg-gray-50 text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+            <div
+                class=""
+                style="width: 100%; overflow-x: auto; border-radius: 0.5rem; border: 1px solid #e5e7eb; background-color: white; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); display: block;"
+            >
+                <table
+                    class=""
+                    style="width: 100%; min-width: 100%; text-align: left; font-size: 0.875rem;"
+                >
+                    <thead class="" style="background-color: #f9fafb; color: #374151;">
                         <tr>
-                            <th class="px-4 py-3 font-semibold">Name</th>
-                            <th class="px-4 py-3 font-semibold">MAC Address</th>
-                            <th class="px-4 py-3 font-semibold">IP Address</th>
-                            <th class="px-4 py-3 font-semibold">Description</th>
-                            <th class="px-4 py-3 font-semibold">Turn Off Port</th>
-                            <th class="px-4 py-3 font-semibold">Can Be Turned Off</th>
-                            <th class="px-4 py-3 font-semibold">Status</th>
-                            <th class="px-4 py-3 font-semibold w-64">Port Forwards</th>
-                            <th class="px-4 py-3 font-semibold">Action</th>
+                            <th
+                                class="px-4 py-3 font-semibold"
+                                style="padding: 0.75rem; font-weight: 600;"
+                            >
+                                Name
+                            </th>
+                            <th
+                                class="px-4 py-3 font-semibold"
+                                style="padding: 0.75rem; font-weight: 600;"
+                            >
+                                MAC Address
+                            </th>
+                            <th
+                                class="px-4 py-3 font-semibold"
+                                style="padding: 0.75rem; font-weight: 600;"
+                            >
+                                IP Address
+                            </th>
+                            <th
+                                class="px-4 py-3 font-semibold"
+                                style="padding: 0.75rem; font-weight: 600;"
+                            >
+                                Description
+                            </th>
+                            <th
+                                class="px-4 py-3 font-semibold"
+                                style="padding: 0.75rem; font-weight: 600;"
+                            >
+                                Status
+                            </th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <tbody class="" style="border-top: 1px solid #e5e7eb;">
                         {move || {
                             machines
+                                .get()
                                 .iter()
                                 .map(|m| {
                                     view! {
-                                        <tr class="align-middle">
-                                            <td class="px-4 py-3 text-xs sm:text-sm">
+                                        <tr
+                                            class=""
+                                            style="vertical-align: middle; border-bottom: 1px solid #e5e7eb;"
+                                        >
+                                            <td class="" style="padding: 0.75rem; font-size: 0.75rem;">
                                                 <a
-                                                    class="underline text-blue-700 dark:text-blue-400 hover:text-blue-900"
+                                                    class=""
                                                     href="/machines/{ m.mac }"
+                                                    style="text-decoration: underline; color: #2563eb; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                                 >
                                                     {m.name.clone()}
                                                 </a>
                                             </td>
-                                            <td class="px-4 py-3 font-mono text-xs sm:text-sm">
+                                            <td
+                                                class=""
+                                                style="padding: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
+                                            >
                                                 {m.mac.clone()}
                                             </td>
-                                            <td class="px-4 py-3 font-mono text-xs sm:text-sm">
+                                            <td
+                                                class=""
+                                                style="padding: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
+                                            >
                                                 {m.ip.clone()}
                                             </td>
-                                            <td class="px-4 py-3">
-                                                <span class="text-xs sm:text-sm">"bla"</span>
+                                            <td class="" style="padding: 0.75rem;">
+                                                <span class="" style="font-size: 0.75rem;">
+                                                    {m.description.clone().unwrap_or_else(|| "-".to_string())}
+                                                </span>
                                             </td>
-                                            <td class="px-4 py-3">
-                                                <span class="font-mono text-xs sm:text-sm">9090</span>
-                                            </td>
-                                            <td class="px-4 py-3">
-                                                <span class="text-xs sm:text-sm">
-                                                    {m.can_be_turned_off}
+                                            <td class="" style="padding: 0.75rem;">
+                                                <span
+                                                    class=""
+                                                    style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
+                                                >
+                                                    ON
                                                 </span>
                                             </td>
                                         </tr>
@@ -881,10 +932,14 @@ fn RegistredMachines() -> impl IntoView {
 }
 
 #[component]
-fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -> impl IntoView {
+fn AddMachine(
+    machine: ReadSignal<Machine>,
+    registred_machines: ReadSignal<Vec<Machine>>,
+    set_registred_machines: WriteSignal<Vec<Machine>>,
+) -> impl IntoView {
     let (machine_form_data, set_machine_form_data) = create_signal::<Machine>(machine.get());
     let (erros, set_errors) = create_signal::<HashMap<String, Vec<String>>>(HashMap::new());
-
+    let (loading, set_loading) = signal(false);
     // Update the local signal when the incoming signal changes
     Effect::new(move |_| {
         set_machine_form_data.set(machine.get());
@@ -917,11 +972,37 @@ fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -
     let on_submit = move |ev: SubmitEvent| {
         // stop the page from reloading!
         ev.prevent_default();
+        set_loading.set(true);
         match machine_form_data.get().validate() {
             Ok(_) => {
                 console::log_1(&"Form is valid".into());
                 // Update the parent machine signal with the form data
-                set_machine.set(machine_form_data.get());
+                //set_machine.set(machine_form_data.get());
+                let current_machines = registred_machines.get();
+                let mut new_machines = current_machines.clone();
+
+                leptos::task::spawn_local(async move {
+                    if let Ok(machines) = create_machine(machine_form_data.get()).await {
+                        //console_log(&format!("Loaded {:?} machines", machines));
+                        new_machines.insert(0, machine_form_data.get());
+
+                        set_registred_machines.set(new_machines);
+                        // Clear the form
+                        set_machine_form_data.set(Machine {
+                            name: "".to_string(),
+                            mac: "".to_string(),
+                            ip: "".to_string(),
+                            description: None,
+                            turn_off_port: None,
+                            can_be_turned_off: false,
+                            port_forwards: vec![],
+                        });
+                        set_errors.set(HashMap::new());
+                    } else {
+                        console_log(&"Error creating machine".to_string());
+                    }
+                });
+                set_loading.set(false);
             }
             Err(e) => {
                 let mut new_errors = HashMap::new();
@@ -973,7 +1054,7 @@ fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -
                                     machine_form_data.clone(),
                                 );
                             }
-                            prop:value=machine_form_data.get().name
+                            prop:value=move || machine_form_data.get().name
                         />
                     </div>
 
@@ -1048,11 +1129,9 @@ fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -
                                 );
                             }
 
-                            prop:value=machine_form_data
-                                .get()
-                                .description
-                                .clone()
-                                .unwrap_or_default()
+                            prop:value=move || {
+                                machine_form_data.get().description.clone().unwrap_or_default()
+                            }
                             name="description"
                             class=""
                         />
@@ -1074,6 +1153,15 @@ fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -
                                     set_machine_form_data.clone(),
                                     machine_form_data.clone(),
                                 );
+                            }
+
+                            prop:value=move || {
+                                machine_form_data
+                                    .get()
+                                    .turn_off_port
+                                    .clone()
+                                    .unwrap_or(3000)
+                                    .to_string()
                             }
                             id="turn_off_port"
                             name="turn_off_port"
@@ -1098,7 +1186,7 @@ fn AddMachine(machine: ReadSignal<Machine>, set_machine: WriteSignal<Machine>) -
                                 machine_form_data.clone(),
                             );
                         }
-                        prop:checked=machine_form_data.get().can_be_turned_off
+                        prop:checked=move || machine_form_data.get().can_be_turned_off
                         id="can_be_turned_off"
                         name="can_be_turned_off"
                         class=""
@@ -1126,9 +1214,76 @@ fn HomePage() -> impl IntoView {
         port_forwards: vec![],
     };
     let (machine, set_machine) = signal::<Machine>(default_machine);
+
+    let (registred_machines, set_registred_machines) = signal::<Vec<Machine>>(vec![]);
+    let (status_machine, set_status_machine) = signal::<HashMap<String, bool>>(HashMap::new());
+
+    // Load initial registred machines
+    Effect::new(move || {
+        leptos::task::spawn_local(async move {
+            if let Ok(machines) = fetch_machines().await {
+                //console_log(&format!("Loaded {:?} machines", machines));
+                set_registred_machines.set(machines);
+            }
+        });
+    });
+
+    // check the status of registred machines when they change
+    Effect::new(move |_| {
+        // console_log(&format!(
+        //     "Registred machines changed: {:?}",
+        //     registred_machines.get()
+        // ));
+
+        leptos::task::spawn_local(async move {
+            let mut status_map = HashMap::new();
+
+            for m in registred_machines.get() {
+                // Check machine status
+                if m.can_be_turned_off == false {
+                    continue;
+                }
+                status_map.insert(m.mac.clone(), false);
+                let turn_off_port = m.turn_off_port.unwrap_or(3000);
+                let res = Request::get(&format!("http://{}:{}/health", m.ip, turn_off_port))
+                    .send()
+                    .await;
+                match res {
+                    Ok(response) => {
+                        if response.status() == 200 {
+                            status_map.insert(m.mac.clone(), true);
+                            console_log(&format!("Machine {} is online", m.name));
+                        } else {
+                            console_log(&format!(
+                                "Machine {} is offline (status: {})",
+                                m.name,
+                                response.status()
+                            ));
+                        }
+                    }
+                    Err(err) => {
+                        console_log(&format!("Error checking machine {}: {}", m.name, err));
+                    }
+                }
+            }
+        });
+    });
+
+    Effect::new(move |_| {
+        console_log(&format!(
+            "Status of machines updated: {:?}",
+            status_machine.get()
+        ));
+    });
+
     view! {
         <Header set_machine=set_machine />
-        <AddMachine machine=machine set_machine=set_machine />
+        <RegistredMachines machines=registred_machines />
+        <AddMachine
+            machine=machine
+            registred_machines=registred_machines
+            set_registred_machines=set_registred_machines
+        />
     }
 }
 

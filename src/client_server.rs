@@ -6,6 +6,8 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
+use tower::ServiceBuilder;
+use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use crate::system;
@@ -15,6 +17,9 @@ pub async fn start(port: u16) -> Result<()> {
         .route("/health", get(health_check))
         .route("/machines/turn-off", post(turn_off_machine));
 
+    let cors_layer = CorsLayer::permissive();
+
+    let app = app.layer(ServiceBuilder::new().layer(cors_layer).into_inner());
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await?;
     info!("listening on http://{}", listener.local_addr()?);
