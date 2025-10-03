@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use web_sys::window;
 
-use chrono::{DateTime, Utc};
+pub mod models;
 use gloo_net::http::Request;
 use leptos::{leptos_dom::logging::console_log, prelude::*};
 use leptos_meta::*;
@@ -10,191 +11,11 @@ use leptos_router::{
 };
 use validator::Validate;
 
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use web_sys::{SubmitEvent, console};
 
 // API Configuration
 const API_BASE: &str = "http://localhost:3000/api";
-const CURRENCY_SYMBOL: &str = "€";
-
-// Shared Models (matching backend)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Category {
-    id: Uuid,
-    name: String,
-    description: Option<String>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Item {
-    id: Uuid,
-    name: String,
-    description: Option<String>,
-    price: f64,
-    category_id: Uuid,
-    sku: Option<String>,
-    in_stock: bool,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Transaction {
-    id: Uuid,
-    customer_name: Option<String>,
-    status: String,
-    total: f64,
-    paid_amount: Option<f64>,
-    change_amount: Option<f64>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-    closed_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TransactionItemDetail {
-    id: Uuid,
-    item_id: Uuid,
-    item_name: String,
-    quantity: i32,
-    unit_price: f64,
-    total_price: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TransactionDetailsResponse {
-    transaction: Transaction,
-    items: Vec<TransactionItemDetail>,
-}
-
-// Report Models
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ItemSalesReport {
-    item_id: Uuid,
-    item_name: String,
-    category_name: String,
-    quantity_sold: i64,
-    total_revenue: f64,
-    average_price: f64,
-    transaction_count: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ReportSummary {
-    total_revenue: f64,
-    total_items_sold: i64,
-    total_transactions: i64,
-    average_transaction_value: f64,
-    top_selling_item: Option<String>,
-    top_revenue_item: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SalesReport {
-    start_date: DateTime<Utc>,
-    end_date: DateTime<Utc>,
-    items: Vec<ItemSalesReport>,
-    summary: ReportSummary,
-}
-
-#[derive(Debug, Serialize)]
-struct ReportDateRange {
-    start_date: DateTime<Utc>,
-    end_date: DateTime<Utc>,
-}
-
-// DTOs
-#[derive(Debug, Serialize)]
-struct CreateCategoryDto {
-    name: String,
-    description: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateCategoryDto {
-    name: Option<String>,
-    description: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateItemDto {
-    name: String,
-    description: Option<String>,
-    price: f64,
-    category_id: Uuid,
-    sku: Option<String>,
-    in_stock: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateItemDto {
-    name: Option<String>,
-    description: Option<String>,
-    price: Option<f64>,
-    category_id: Option<Uuid>,
-    sku: Option<String>,
-    in_stock: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateTransactionDto {
-    customer_name: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct AddTransactionItemDto {
-    item_id: Uuid,
-    quantity: i32,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateTransactionDto {
-    customer_name: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpdateTransactionItemDto {
-    item_id: Uuid,
-    quantity: i32,
-}
-
-#[derive(Debug, Serialize)]
-struct CloseTransactionDto {
-    paid_amount: f64,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct CloseTransactionResponse {
-    transaction: Transaction,
-    change_amount: f64,
-}
-
-// API Client - Categories
-async fn fetch_categories() -> Result<Vec<Category>, String> {
-    Request::get(&format!("{}/categories", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn create_category(dto: CreateCategoryDto) -> Result<Category, String> {
-    Request::post(&format!("{}/categories", API_BASE))
-        .json(&dto)
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
+use crate::models::{DiscoveredDevice, Machine, NetworkInterface, PortForward};
 
 async fn create_machine(machine: Machine) -> Result<(), String> {
     Request::post(&format!("{}/machines", API_BASE))
@@ -206,288 +27,16 @@ async fn create_machine(machine: Machine) -> Result<(), String> {
 
     Ok(())
 }
-async fn update_category(id: Uuid, dto: UpdateCategoryDto) -> Result<Category, String> {
-    Request::put(&format!("{}/categories/{}", API_BASE, id))
-        .json(&dto)
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
 
-async fn delete_category(id: Uuid) -> Result<(), String> {
-    Request::delete(&format!("{}/categories/{}", API_BASE, id))
+async fn delete_machine(mac: &str) -> Result<(), String> {
+    let payload = serde_json::json!({ "mac": mac });
+    Request::delete(&format!("{}/machines/delete", API_BASE))
+        .json(&payload)
+        .map_err(|e| e.to_string())?
         .send()
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-// API Client - Items
-async fn fetch_items() -> Result<Vec<Item>, String> {
-    Request::get(&format!("{}/items", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn create_item(dto: CreateItemDto) -> Result<Item, String> {
-    Request::post(&format!("{}/items", API_BASE))
-        .json(&dto)
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn update_item(id: Uuid, dto: UpdateItemDto) -> Result<Item, String> {
-    Request::put(&format!("{}/items/{}", API_BASE, id))
-        .json(&dto)
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn delete_item(id: Uuid) -> Result<(), String> {
-    Request::delete(&format!("{}/items/{}", API_BASE, id))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-// API Client - Transactions
-async fn fetch_all_transactions() -> Result<Vec<Transaction>, String> {
-    Request::get(&format!("{}/transactions", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn fetch_open_transactions() -> Result<Vec<Transaction>, String> {
-    Request::get(&format!("{}/transactions/open", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn fetch_transaction_details(id: Uuid) -> Result<TransactionDetailsResponse, String> {
-    Request::get(&format!("{}/transactions/{}", API_BASE, id))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn create_transaction(customer_name: Option<String>) -> Result<Transaction, String> {
-    Request::post(&format!("{}/transactions", API_BASE))
-        .json(&CreateTransactionDto { customer_name })
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn update_transaction(
-    id: Uuid,
-    customer_name: Option<String>,
-) -> Result<Transaction, String> {
-    Request::put(&format!("{}/transactions/{}", API_BASE, id))
-        .json(&UpdateTransactionDto { customer_name })
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn add_item_to_transaction(
-    transaction_id: Uuid,
-    item_id: Uuid,
-    quantity: i32,
-) -> Result<(), String> {
-    // Fetch current transaction details
-    let details = fetch_transaction_details(transaction_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let existing = details.items.iter().find(|item| item.item_id == item_id);
-
-    let new_quantity = if let Some(item) = existing {
-        item.quantity + quantity
-    } else {
-        quantity
-    };
-
-    if new_quantity <= 0 {
-        // Remove item if quantity is zero or less
-        remove_item_from_transaction(transaction_id, item_id).await
-    } else if new_quantity == 1 {
-        // add item with quantity 1
-        Request::post(&format!(
-            "{}/transactions/{}/items",
-            API_BASE, transaction_id
-        ))
-        .json(&AddTransactionItemDto {
-            item_id,
-            quantity: new_quantity,
-        })
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    } else if new_quantity > 1 {
-        // Update item quantity
-        Request::put(&format!(
-            "{}/transactions/{}/items/{}",
-            API_BASE, transaction_id, item_id
-        ))
-        .json(&UpdateTransactionItemDto {
-            item_id,
-            quantity: new_quantity,
-        })
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        Err("Invalid quantity".to_string())
-    }
-}
-
-async fn remove_item_from_transaction(transaction_id: Uuid, item_id: Uuid) -> Result<(), String> {
-    // Fetch current transaction details
-    let details = fetch_transaction_details(transaction_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    if let Some(item) = details.items.iter().find(|item| item.item_id == item_id) {
-        if item.quantity > 1 {
-            // Decrease quantity by 1
-            Request::put(&format!(
-                "{}/transactions/{}/items/{}",
-                API_BASE, transaction_id, item_id
-            ))
-            .json(&UpdateTransactionItemDto {
-                item_id,
-                quantity: item.quantity - 1,
-            })
-            .map_err(|e| e.to_string())?
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-            Ok(())
-        } else if item.quantity == 1 {
-            // Remove item if quantity is 1
-            Request::delete(&format!(
-                "{}/transactions/{}/items/{}",
-                API_BASE, transaction_id, item_id
-            ))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-            Ok(())
-        } else {
-            Ok(())
-        }
-    } else {
-        Ok(())
-    }
-}
-
-async fn close_transaction(id: Uuid, paid_amount: f64) -> Result<CloseTransactionResponse, String> {
-    Request::post(&format!("{}/transactions/{}/close", API_BASE, id))
-        .json(&CloseTransactionDto { paid_amount })
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn cancel_transaction(id: Uuid) -> Result<Transaction, String> {
-    Request::post(&format!("{}/transactions/{}/cancel", API_BASE, id))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-// API Client - Reports
-async fn fetch_sales_report(
-    start_date: DateTime<Utc>,
-    end_date: DateTime<Utc>,
-) -> Result<SalesReport, String> {
-    Request::post(&format!("{}/reports/sales", API_BASE))
-        .json(&ReportDateRange {
-            start_date,
-            end_date,
-        })
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn fetch_daily_report() -> Result<SalesReport, String> {
-    Request::get(&format!("{}/reports/daily", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn fetch_monthly_report() -> Result<SalesReport, String> {
-    Request::get(&format!("{}/reports/monthly", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NetworkInterface {
-    pub name: String,
-    pub ip: String,
-    pub mac: String,
-    pub is_up: bool,
 }
 
 async fn fetch_machines() -> Result<Vec<Machine>, String> {
@@ -509,14 +58,6 @@ async fn fetch_interfaces() -> Result<Vec<NetworkInterface>, String> {
         .await
         .map_err(|e| e.to_string())
 }
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct DiscoveredDevice {
-    pub ip: String,
-    pub mac: String,
-    pub hostname: Option<String>,
-}
-
 async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>, String> {
     let mut url = String::new();
     if device.is_empty() {
@@ -533,76 +74,23 @@ async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>, Str
         .map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct Machine {
-    name: String,
-    mac: String,
-    ip: String,
-    description: Option<String>,
-    turn_off_port: Option<u32>,
-    can_be_turned_off: bool,
-    port_forwards: Vec<PortForward>,
-}
-
-impl validator::Validate for Machine {
-    fn validate(&self) -> Result<(), validator::ValidationErrors> {
-        let mut errors = validator::ValidationErrors::new();
-
-        // Add custom validation logic here if needed
-        // For now, we'll just return Ok
-        if self.name.is_empty() {
-            errors.add("name", validator::ValidationError::new("Name is required"));
-        }
-        let ip = self.ip.parse::<std::net::IpAddr>();
-
-        if ip.is_err() {
-            errors.add("ip", validator::ValidationError::new("Invalid IP address"));
-        }
-
-        // check if turn_off_port is Some and in range 1-65535
-        if let Some(port) = self.turn_off_port {
-            if 0 == port || port > 65535 {
-                errors.add(
-                    "turn_off_port",
-                    validator::ValidationError::new("Port must be between 1 and 65535"),
-                );
-            }
-        }
-
-        if self.mac.is_empty() {
-            errors.add(
-                "mac",
-                validator::ValidationError::new("MAC address is required"),
-            );
-        }
-        let is_valid_mac = self
-            .mac
-            .chars()
-            .filter(|c| c.is_ascii_hexdigit() || *c == ':' || *c == '-')
-            .count()
-            == self.mac.len()
-            && (self.mac.len() == 17 || self.mac.len() == 12);
-
-        if !is_valid_mac {
-            errors.add(
-                "mac",
-                validator::ValidationError::new("Invalid MAC address"),
-            );
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
+async fn is_machine_online(machine: &Machine) -> bool {
+    let url = format!(
+        "http://{}:{}/health",
+        machine.ip,
+        machine.turn_off_port.unwrap_or(3000)
+    );
+    let response = Request::get(&url).send().await;
+    match response {
+        Ok(res) => res.status() == 200,
+        Err(e) => {
+            console_log(&format!(
+                "Network error for machine {}: {}",
+                machine.name, e
+            ));
+            false // Mark as offline on network errors
         }
     }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct PortForward {
-    name: Option<String>,
-    local_port: u16,
-    target_port: u16,
 }
 
 #[component]
@@ -707,6 +195,12 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                     set_discovered_devices.set(devices);
                 })
                 .unwrap_or_else(|err| {
+                    window()
+                        .unwrap()
+                        .alert_with_message(&format!(
+                            "Error scanning network, check the logs in the backend"
+                        ))
+                        .unwrap();
                     console::log_1(&format!("Error scanning network: {}", err).into());
                 });
 
@@ -714,7 +208,11 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
         });
     };
 
-    fn handle_add_machine(device: DiscoveredDevice, set_machine: WriteSignal<Machine>) {
+    fn handle_add_machine(
+        device: DiscoveredDevice,
+        set_machine: WriteSignal<Machine>,
+        set_discovered_devices: WriteSignal<Vec<DiscoveredDevice>>,
+    ) {
         let new_machine = Machine {
             name: device.hostname.clone().unwrap_or_else(|| "".to_string()),
             mac: device.mac.clone(),
@@ -725,6 +223,7 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
             port_forwards: vec![],
         };
         set_machine.set(new_machine);
+        set_discovered_devices.set(vec![]);
     }
 
     view! {
@@ -805,7 +304,11 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                                             <td class="">{device.mac.clone()}</td>
                                             <td class="px-4 py-3">
                                                 <button on:click=move |_| {
-                                                    handle_add_machine(device.clone(), set_machine.clone());
+                                                    handle_add_machine(
+                                                        device.clone(),
+                                                        set_machine.clone(),
+                                                        set_discovered_devices.clone(),
+                                                    );
                                                 }>{"＋"}</button>
                                             </td>
                                         </tr>
@@ -821,7 +324,38 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
 }
 
 #[component]
-fn RegistredMachines(machines: ReadSignal<Vec<Machine>>) -> impl IntoView {
+fn RegistredMachines(
+    machines: ReadSignal<Vec<Machine>>,
+    status_machine: ReadSignal<HashMap<String, bool>>,
+    set_registred_machines: WriteSignal<Vec<Machine>>,
+) -> impl IntoView {
+    let on_delete = move |mac_to_delete: String| {
+        leptos::task::spawn_local(async move {
+            // Call the API to delete the machine
+            if let Err(err) = delete_machine(&mac_to_delete).await {
+                console_log(&format!(
+                    "Error deleting machine {}: {}",
+                    mac_to_delete, err
+                ));
+                window()
+                    .unwrap()
+                    .alert_with_message(&format!("Error deleting machine: {}", err))
+                    .unwrap();
+                return;
+            }
+
+            // Remove the machine from the local state
+            let current_machines = machines.get();
+            let filtered_machines: Vec<Machine> = current_machines
+                .into_iter()
+                .filter(|m| m.mac != mac_to_delete)
+                .collect();
+
+            set_registred_machines.set(filtered_machines);
+            console_log(&format!("Successfully deleted machine: {}", mac_to_delete));
+        });
+    };
+
     view! {
         <section class="" style="width: 100%; margin-top: 2rem;">
             <div
@@ -872,6 +406,12 @@ fn RegistredMachines(machines: ReadSignal<Vec<Machine>>) -> impl IntoView {
                             >
                                 Status
                             </th>
+                            <th
+                                class="px-4 py-3 font-semibold"
+                                style="padding: 0.75rem; font-weight: 600;"
+                            >
+                                Actions
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="" style="border-top: 1px solid #e5e7eb;">
@@ -880,6 +420,8 @@ fn RegistredMachines(machines: ReadSignal<Vec<Machine>>) -> impl IntoView {
                                 .get()
                                 .iter()
                                 .map(|m| {
+                                    let machine = m.clone();
+                                    // Clone the machine for the closure
                                     view! {
                                         <tr
                                             class=""
@@ -888,27 +430,30 @@ fn RegistredMachines(machines: ReadSignal<Vec<Machine>>) -> impl IntoView {
                                             <td class="" style="padding: 0.75rem; font-size: 0.75rem;">
                                                 <a
                                                     class=""
-                                                    href="/machines/{ m.mac }"
+                                                    href="/machines/{ machine.mac }"
                                                     style="text-decoration: underline; color: #2563eb; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                                 >
-                                                    {m.name.clone()}
+                                                    {machine.name.clone()}
                                                 </a>
                                             </td>
                                             <td
                                                 class=""
                                                 style="padding: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
                                             >
-                                                {m.mac.clone()}
+                                                {machine.mac.clone()}
                                             </td>
                                             <td
                                                 class=""
                                                 style="padding: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
                                             >
-                                                {m.ip.clone()}
+                                                {machine.ip.clone()}
                                             </td>
                                             <td class="" style="padding: 0.75rem;">
                                                 <span class="" style="font-size: 0.75rem;">
-                                                    {m.description.clone().unwrap_or_else(|| "-".to_string())}
+                                                    {machine
+                                                        .description
+                                                        .clone()
+                                                        .unwrap_or_else(|| "-".to_string())}
                                                 </span>
                                             </td>
                                             <td class="" style="padding: 0.75rem;">
@@ -916,8 +461,39 @@ fn RegistredMachines(machines: ReadSignal<Vec<Machine>>) -> impl IntoView {
                                                     class=""
                                                     style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
                                                 >
-                                                    ON
+                                                    {status_machine
+                                                        .get()
+                                                        .get(&machine.mac)
+                                                        .cloned()
+                                                        .unwrap_or(false)
+                                                        .then(|| {
+                                                            view! { <span style="color: green;">"Online"</span> }
+                                                        })
+                                                        .unwrap_or_else(|| {
+                                                            view! { <span style="color: red;">"Offline"</span> }
+                                                        })}
                                                 </span>
+                                            </td>
+                                            <td class="" style="padding: 0.75rem;">
+                                                <button
+                                                    on:click=move |_| {
+                                                        if window()
+                                                            .unwrap()
+                                                            .confirm_with_message(
+                                                                &format!(
+                                                                    "Are you sure you want to delete machine {}?",
+                                                                    machine.name,
+                                                                ),
+                                                            )
+                                                            .unwrap_or(false)
+                                                        {
+                                                            on_delete(machine.mac.clone());
+                                                        }
+                                                    }
+                                                    style="color: #dc2626; background: none; border: none; cursor: pointer; font-size: 1rem;"
+                                                >
+                                                    "🗑️"
+                                                </button>
                                             </td>
                                         </tr>
                                     }
@@ -937,10 +513,9 @@ fn AddMachine(
     registred_machines: ReadSignal<Vec<Machine>>,
     set_registred_machines: WriteSignal<Vec<Machine>>,
 ) -> impl IntoView {
-    let (machine_form_data, set_machine_form_data) = create_signal::<Machine>(machine.get());
-    let (erros, set_errors) = create_signal::<HashMap<String, Vec<String>>>(HashMap::new());
+    let (machine_form_data, set_machine_form_data) = signal::<Machine>(machine.get());
+    let (erros, set_errors) = signal::<HashMap<String, Vec<String>>>(HashMap::new());
     let (loading, set_loading) = signal(false);
-    // Update the local signal when the incoming signal changes
     Effect::new(move |_| {
         set_machine_form_data.set(machine.get());
     });
@@ -951,7 +526,7 @@ fn AddMachine(
         set_machine_form_data: WriteSignal<Machine>,
         machine_form_data: ReadSignal<Machine>,
     ) {
-        console_log(&format!("Setting {} to {}", key, value));
+        //console_log(&format!("Setting {} to {}", key, value));
         let mut current = machine_form_data.get();
         match key {
             "name" => current.name = value,
@@ -976,13 +551,11 @@ fn AddMachine(
         match machine_form_data.get().validate() {
             Ok(_) => {
                 console::log_1(&"Form is valid".into());
-                // Update the parent machine signal with the form data
-                //set_machine.set(machine_form_data.get());
                 let current_machines = registred_machines.get();
                 let mut new_machines = current_machines.clone();
 
                 leptos::task::spawn_local(async move {
-                    if let Ok(machines) = create_machine(machine_form_data.get()).await {
+                    if let Ok(_) = create_machine(machine_form_data.get()).await {
                         //console_log(&format!("Loaded {:?} machines", machines));
                         new_machines.insert(0, machine_form_data.get());
 
@@ -1006,17 +579,10 @@ fn AddMachine(
             }
             Err(e) => {
                 let mut new_errors = HashMap::new();
-                console::log_1(&format!("Form is invalid: {:?}", e).into());
                 for (field, errors) in e.field_errors() {
                     let mut field_errors = vec![];
-                    console::log_1(&format!("Field: {}", field).into());
                     for error in errors {
-                        console_log(&format!(" - Code: {}", error.code));
                         field_errors.push(error.code.to_string());
-                        console::log_1(
-                            &format!(" - Error: {}", error.message.clone().unwrap_or_default())
-                                .into(),
-                        );
                     }
                     new_errors.insert(field.to_string(), field_errors);
                 }
@@ -1024,8 +590,6 @@ fn AddMachine(
                 return;
             }
         }
-
-        console::log_1(&format!("Form submitted with data: {:?}", ev).into());
     };
 
     view! {
@@ -1194,8 +758,15 @@ fn AddMachine(
                 </div>
                 <div style="font-size:21px; display: flex;justify-content: center;">
 
-                    <button type="submit" class="submit-button submit-button:hover">
-                        "Add Machine"
+                    <button
+                        type="submit"
+                        disabled=move || loading.get()
+                        class="submit-button submit-button:hover"
+                    >
+                        {move || {
+                            if loading.get() { "Adding Machine..." } else { "Add Machine" }
+                        }}
+
                     </button>
                 </div>
             </form>
@@ -1230,55 +801,45 @@ fn HomePage() -> impl IntoView {
 
     // check the status of registred machines when they change
     Effect::new(move |_| {
-        // console_log(&format!(
-        //     "Registred machines changed: {:?}",
-        //     registred_machines.get()
-        // ));
+        let machines = registred_machines.get();
+        if machines.is_empty() {
+            console_log("No registred machines");
+            return;
+        }
 
+        // Spawn the async task to check all machines
         leptos::task::spawn_local(async move {
-            let mut status_map = HashMap::new();
+            // Create a vector of futures to check each machine concurrently
+            let mut futures = Vec::new();
 
-            for m in registred_machines.get() {
-                // Check machine status
-                if m.can_be_turned_off == false {
-                    continue;
-                }
-                status_map.insert(m.mac.clone(), false);
-                let turn_off_port = m.turn_off_port.unwrap_or(3000);
-                let res = Request::get(&format!("http://{}:{}/health", m.ip, turn_off_port))
-                    .send()
-                    .await;
-                match res {
-                    Ok(response) => {
-                        if response.status() == 200 {
-                            status_map.insert(m.mac.clone(), true);
-                            console_log(&format!("Machine {} is online", m.name));
-                        } else {
-                            console_log(&format!(
-                                "Machine {} is offline (status: {})",
-                                m.name,
-                                response.status()
-                            ));
-                        }
-                    }
-                    Err(err) => {
-                        console_log(&format!("Error checking machine {}: {}", m.name, err));
-                    }
-                }
+            for m in machines {
+                let machine_mac = m.mac.clone();
+                let machine_name = m.name.clone();
+
+                console_log(&format!("Checking machine {}", machine_name));
+                let future = async move { (machine_mac, is_machine_online(&m).await) };
+                futures.push(future);
             }
-        });
-    });
 
-    Effect::new(move |_| {
-        console_log(&format!(
-            "Status of machines updated: {:?}",
-            status_machine.get()
-        ));
+            // Wait for all futures to complete, regardless of individual failures
+            let results = futures::future::join_all(futures).await;
+
+            // Build the status map from all results
+            let mut status_map = HashMap::new();
+            for (mac, is_online) in results {
+                status_map.insert(mac, is_online);
+            }
+            set_status_machine.set(status_map);
+        });
     });
 
     view! {
         <Header set_machine=set_machine />
-        <RegistredMachines machines=registred_machines />
+        <RegistredMachines
+            machines=registred_machines
+            status_machine=status_machine
+            set_registred_machines=set_registred_machines
+        />
         <AddMachine
             machine=machine
             registred_machines=registred_machines

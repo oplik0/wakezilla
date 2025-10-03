@@ -4,7 +4,7 @@ use askama_axum::Template;
 use axum::{
     extract::{Form, Json as JsonExtract, Query, State},
     response::{IntoResponse, Json, Redirect},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use reqwest::Method;
@@ -68,6 +68,7 @@ pub fn api_routes(state: AppState) -> Router {
             "/api/machines",
             get(show_machines_api).post(add_machine_api),
         )
+        .route("/api/machines/delete", delete(delete_machine_api))
         .with_state(state)
 }
 
@@ -248,6 +249,49 @@ async fn add_machine(
     }
 
     Redirect::to("/").into_response()
+}
+
+async fn delete_machine_api(
+    State(state): State<AppState>,
+    JsonExtract(payload): JsonExtract<DeleteForm>,
+) -> impl IntoResponse {
+    // Stop all proxies associated with this machine
+    info!("Deleting machine with MAC: {}", payload.mac);
+    let mut proxies = state.proxies.write().await;
+    proxies.retain(|key, tx| {
+        if key.starts_with(&payload.mac) {
+            if tx.send(false).is_ok() {
+                info!("Sent stop signal to proxy for MAC/key: {}", key);
+            }
+            false // Remove the entry
+        } else {
+            true // Keep the entry
+        }
+    });
+    drop(proxies); // Release the write lock
+
+    let mut machines = state.machines.write().await;
+
+    // Remove connections from pool for this machine's IP
+    if let Some(machine) = machines.iter().find(|m| m.mac == payload.mac) {
+        let target_addr = SocketAddr::from((machine.ip, 0));
+        state.connection_pool.remove_target(target_addr).await;
+        debug!("Removed connections from pool for machine {}", machine.ip);
+    }
+
+    machines.retain(|m| m.mac != payload.mac);
+
+    if let Err(e) = web::save_machines(&machines) {
+        error!("Error saving machines: {}", e);
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "Failed to save machines" })),
+        );
+    }
+    (
+        axum::http::StatusCode::OK,
+        Json(serde_json::json!({ "status": "Machine deleted" })),
+    )
 }
 
 async fn delete_machine(
