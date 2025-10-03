@@ -4,17 +4,15 @@ use askama_axum::Template;
 use axum::{
     extract::{Form, Json as JsonExtract, Query, State},
     response::{IntoResponse, Json, Redirect},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
-use reqwest::Method;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::{net::TcpListener, sync::RwLock};
 use tower::ServiceBuilder;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tracing::{debug, error, info};
 use validator::Validate;
 
@@ -68,6 +66,8 @@ pub fn api_routes(state: AppState) -> Router {
             "/api/machines",
             get(show_machines_api).post(add_machine_api),
         )
+        .route("/api/machines/:mac", get(get_machine_details_api))
+        .route("/api/machines/:mac", put(update_machine_api))
         .route("/api/machines/delete", delete(delete_machine_api))
         .with_state(state)
 }
@@ -192,6 +192,58 @@ async fn show_machines_api(State(state): State<AppState>) -> impl IntoResponse {
     let mut machines = state.machines.read().await.clone();
     machines.reverse();
     Json(machines)
+}
+
+
+async fn get_machine_details_api(
+    State(state): State<AppState>,
+    Path(mac): Path<String>,
+) -> Result<Json<Machine>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    let machines = state.machines.read().await;
+    if let Some(machine) = machines.iter().find(|m| m.mac == mac).cloned() {
+        Ok(Json(machine))
+    } else {
+        Err((
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Machine not found" })),
+        ))
+    }
+}
+
+async fn update_machine_api(
+    State(state): State<AppState>,
+    Path(mac): Path<String>,
+    JsonExtract(payload): JsonExtract<web::AddMachineForm>,
+) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
+    let mut machines = state.machines.write().await;
+    
+    if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
+        // Update the machine with new data
+        machine.ip = payload.ip.parse().expect("Invalid IP address");
+        machine.name = payload.name;
+        machine.description = payload.description;
+        machine.turn_off_port = payload.turn_off_port;
+        machine.can_be_turned_off = payload.can_be_turned_off;
+        machine.request_rate = web::RequestRateConfig {
+            max_requests: payload.requests_per_hour.unwrap_or(1000),
+            period_minutes: payload.period_minutes.unwrap_or(60),
+        };
+        
+        if let Err(e) = web::save_machines(&machines) {
+            error!("Error saving machines: {}", e);
+            return Err((
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Failed to save machines" })),
+            ));
+        }
+        
+        Ok(Json(serde_json::json!({ "status": "Machine updated" })))
+    } else {
+        Err((
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Machine not found" })),
+        ))
+    }
 }
 
 async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {

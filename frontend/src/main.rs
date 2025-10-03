@@ -1,5 +1,8 @@
 use leptos::prelude::*;
 use std::collections::HashMap;
+
+use wasm_bindgen::JsCast;
+use web_sys::HtmlInputElement;
 use web_sys::window;
 
 pub mod api;
@@ -17,27 +20,9 @@ use web_sys::{SubmitEvent, console};
 
 use crate::api::{
     create_machine, delete_machine, fetch_interfaces, fetch_machines, fetch_scan_network,
-    is_machine_online,
+    get_details_machine, is_machine_online,
 };
 use crate::models::{DiscoveredDevice, Machine, NetworkInterface};
-
-#[component]
-fn Navbar() -> impl IntoView {
-    view! {
-        <nav class="">
-            <div class="">
-                <img class="sitelogo" src="/logo_site.png" />
-                <div class="nav-links">
-                    <A href="/">"Sale"</A>
-                    <A href="/transactions">"Transactions"</A>
-                    <A href="/items">"Items"</A>
-                    <A href="/categories">"Categories"</A>
-                    <A href="/reports">"Reports"</A>
-                </div>
-            </div>
-        </nav>
-    }
-}
 
 #[component]
 pub fn ErrorDisplay(
@@ -72,17 +57,274 @@ pub fn ErrorDisplay(
 fn MachineDetailPage() -> impl IntoView {
     let params = use_params_map();
     let mac = move || params.read().get("mac").unwrap_or_default();
-    console_log(&format!("MachineDetailPage for MAC: {}", mac()));
+    let (loading, set_loading) = signal(false);
+    let (machine_details, set_machine_details) = signal::<Machine>(Machine {
+        name: "".to_string(),
+        mac: "".to_string(),
+        ip: "".to_string(),
+        description: None,
+        turn_off_port: None,
+        can_be_turned_off: false,
+        port_forwards: vec![],
+    });
+
+    // Load initial machine details
+    Effect::new(move || {
+        leptos::task::spawn_local(async move {
+            if let Ok(cats) = get_details_machine(&mac()).await {
+                set_machine_details.set(cats);
+            }
+        });
+    });
+
+    // Form state
+    let (name, set_name) = signal(String::new());
+    let (ip, set_ip) = signal(String::new());
+    let (description, set_description) = signal(String::new());
+    let (turn_off_port, set_turn_off_port) = signal::<Option<u32>>(None); // Changed to u32 to match Machine model
+    let (can_be_turned_off, set_can_be_turned_off) = signal(false);
+    let (_requests_per_hour, _set_requests_per_hour) = signal(1000u32);
+    let (_period_minutes, _set_period_minutes) = signal(60u32);
+
+    // Update form fields when machine details load
+    Effect::new(move || {
+        let machine = machine_details.get();
+        set_name.set(machine.name.clone());
+        set_ip.set(machine.ip.clone());
+        set_description.set(machine.description.clone().unwrap_or_default());
+        set_turn_off_port.set(machine.turn_off_port); // This should now match the type
+        set_can_be_turned_off.set(machine.can_be_turned_off);
+        // Note: The Machine model doesn't have requests_per_hour and period_minutes in the frontend
+        // We'll just use default values for now, or you could extend the model
+    });
+
+    let update_machine = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_loading.set(true);
+
+        let updated_mac = mac();
+        let updated_name = name.get();
+        let updated_ip = ip.get();
+        let updated_description = if description.get().trim().is_empty() {
+            None
+        } else {
+            Some(description.get())
+        };
+        let updated_turn_off_port = if can_be_turned_off.get() {
+            turn_off_port.get()
+        } else {
+            None
+        };
+        let updated_can_be_turned_off = can_be_turned_off.get();
+
+        // Create updated machine object
+        let updated_machine = Machine {
+            name: updated_name,
+            mac: updated_mac.clone(),
+            ip: updated_ip,
+            description: updated_description,
+            turn_off_port: updated_turn_off_port,
+            can_be_turned_off: updated_can_be_turned_off,
+            port_forwards: machine_details.get().port_forwards.clone(), // Keep existing port forwards
+        };
+
+        leptos::task::spawn_local(async move {
+            match crate::api::update_machine(&updated_mac, &updated_machine).await {
+                Ok(_) => {
+                    web_sys::console::log_1(&"Machine updated successfully".into());
+                    // Reload the machine details to reflect changes
+                    if let Ok(updated_details) = get_details_machine(&updated_mac).await {
+                        set_machine_details.set(updated_details);
+                    }
+                    window()
+                        .unwrap()
+                        .alert_with_message("Machine updated successfully!")
+                        .unwrap();
+                }
+                Err(e) => {
+                    web_sys::console::log_1(&format!("Error updating machine: {}", e).into());
+                    window()
+                        .unwrap()
+                        .alert_with_message(&format!("Error updating machine: {}", e))
+                        .unwrap();
+                }
+            }
+            set_loading.set(false);
+        });
+    };
 
     view! {
         <div class="machine-detail-container">
-            <h1>Machine Details</h1>
-            <h2>MAC: {move || mac()}</h2>
-            <p>"Detailed view for the machine would be shown here."</p>
             <div style="margin-top: 1rem;">
                 <a href="/" style="color: #2563eb; text-decoration: underline;">
                     "Back to Home"
                 </a>
+            </div>
+            <h3>Update Machine</h3>
+            <form
+                on:submit=update_machine
+                class="update-form"
+                style="margin: 1rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;"
+            >
+                <div style="margin-bottom: 1rem;">
+                    <label
+                        for="name"
+                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
+                    >
+                        Name
+                    </label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        required
+                        value=move || name.get()
+                        on:input=move |ev| {
+                            let target = ev.target().unwrap();
+                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                            set_name.set(input.value());
+                        }
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                    />
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label
+                        for="ip"
+                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
+                    >
+                        IP Address
+                    </label>
+                    <input
+                        type="text"
+                        id="ip"
+                        name="ip"
+                        required
+                        value=move || ip.get()
+                        on:input=move |ev| {
+                            let target = ev.target().unwrap();
+                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                            set_ip.set(input.value());
+                        }
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                    />
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <label
+                        for="description"
+                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
+                    >
+                        Description
+                    </label>
+                    <input
+                        type="text"
+                        id="description"
+                        name="description"
+                        value=move || description.get()
+                        on:input=move |ev| {
+                            let target = ev.target().unwrap();
+                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                            set_description.set(input.value());
+                        }
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                    />
+                </div>
+
+                <div style="margin-bottom: 1rem;" class="flex items-center">
+                    <input
+                        type="checkbox"
+                        id="can_be_turned_off"
+                        name="can_be_turned_off"
+                        checked=move || can_be_turned_off.get()
+                        on:change=move |ev| {
+                            let target = ev.target().unwrap();
+                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                            set_can_be_turned_off.set(input.checked());
+                        }
+                        class="mr-2"
+                    />
+                    <label for="can_be_turned_off" style="font-weight: bold;">
+                        Can be turned off remotely
+                    </label>
+                </div>
+
+                <div style=move || {
+                    if can_be_turned_off.get() {
+                        "display: block; margin-bottom: 1rem;"
+                    } else {
+                        "display: none; margin-bottom: 1rem;"
+                    }
+                }>
+                    <label
+                        for="turn_off_port"
+                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
+                    >
+                        Turn Off Port
+                    </label>
+                    <input
+                        type="number"
+                        id="turn_off_port"
+                        name="turn_off_port"
+                        min="1"
+                        max="65535"
+                        value=move || turn_off_port.get().map(|p| p.to_string()).unwrap_or_default()
+                        on:input=move |ev| {
+                            let target = ev.target().unwrap();
+                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                            let value = input.value();
+                            set_turn_off_port.set(value.parse().ok());
+                        }
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                    />
+                </div>
+                <div>
+                    <label
+                        for="requests_per_hour"
+                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
+                    >
+                        Requests Per Hour
+                    </label>
+                    <input
+                        type="number"
+                        id="requests_per_hour"
+                        name="requests_per_hour"
+                        min="1"
+                        value=move || _requests_per_hour.get().to_string()
+                        on:input=move |ev| {
+                            let target = ev.target().unwrap();
+                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                            if let Ok(value) = input.value().parse() {
+                                _set_requests_per_hour.set(value);
+                            }
+                        }
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                    />
+                </div>
+                <div>
+                    <button
+                        type="submit"
+                        class="rounded-lg bg-blue-600 px-4 py-2 text-white"
+                        style="background-color: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
+                        disabled=move || loading.get()
+                    >
+                        {move || if loading.get() { "Updating..." } else { "Update Machine" }}
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top: 1rem;">
+                <h3>Raw Machine Data</h3>
+                <pre class="machine-json">
+                    {move || {
+                        serde_json::to_string_pretty(&machine_details.get()).unwrap_or_default()
+                    }}
+                </pre>
             </div>
         </div>
     }

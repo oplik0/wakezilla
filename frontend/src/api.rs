@@ -16,6 +16,26 @@ pub async fn create_machine(machine: Machine) -> Result<(), String> {
 
     Ok(())
 }
+pub async fn get_details_machine(mac: &str) -> Result<Machine, String> {
+    Request::get(&format!("{}/machines/{}", API_BASE, mac))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn update_machine(mac: &str, machine: &Machine) -> Result<(), String> {
+    Request::put(&format!("{}/machines/{}", API_BASE, mac))
+        .json(machine)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
 
 pub async fn delete_machine(mac: &str) -> Result<(), String> {
     let payload = serde_json::json!({ "mac": mac });
@@ -49,12 +69,11 @@ pub async fn fetch_interfaces() -> Result<Vec<NetworkInterface>, String> {
 }
 
 pub async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>, String> {
-    let mut url = String::new();
-    if device.is_empty() {
-        url = format!("{}/scan", API_BASE);
+    let url = if device.is_empty() {
+        format!("{}/scan", API_BASE)
     } else {
-        url = format!("{}/scan?interface={}", API_BASE, device);
-    }
+        format!("{}/scan?interface={}", API_BASE, device)
+    };
     Request::get(&url)
         .send()
         .await
