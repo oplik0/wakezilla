@@ -22,7 +22,7 @@ use crate::api::{
     create_machine, delete_machine, fetch_interfaces, fetch_machines, fetch_scan_network,
     get_details_machine, is_machine_online,
 };
-use crate::models::{DiscoveredDevice, Machine, NetworkInterface};
+use crate::models::{DiscoveredDevice, Machine, NetworkInterface, PortForward};
 
 #[component]
 pub fn ErrorDisplay(
@@ -83,6 +83,7 @@ fn MachineDetailPage() -> impl IntoView {
     let (description, set_description) = signal(String::new());
     let (turn_off_port, set_turn_off_port) = signal::<Option<u32>>(None); // Changed to u32 to match Machine model
     let (can_be_turned_off, set_can_be_turned_off) = signal(false);
+    let (port_forwards, set_port_forwards) = signal::<Vec<PortForward>>(vec![]);
     let (_requests_per_hour, _set_requests_per_hour) = signal(1000u32);
     let (_period_minutes, _set_period_minutes) = signal(60u32);
 
@@ -94,6 +95,7 @@ fn MachineDetailPage() -> impl IntoView {
         set_description.set(machine.description.clone().unwrap_or_default());
         set_turn_off_port.set(machine.turn_off_port); // This should now match the type
         set_can_be_turned_off.set(machine.can_be_turned_off);
+        set_port_forwards.set(machine.port_forwards.clone());
         // Note: The Machine model doesn't have requests_per_hour and period_minutes in the frontend
         // We'll just use default values for now, or you could extend the model
     });
@@ -116,6 +118,7 @@ fn MachineDetailPage() -> impl IntoView {
             None
         };
         let updated_can_be_turned_off = can_be_turned_off.get();
+        let updated_port_forwards = port_forwards.get();
 
         // Create updated machine object
         let updated_machine = Machine {
@@ -125,7 +128,7 @@ fn MachineDetailPage() -> impl IntoView {
             description: updated_description,
             turn_off_port: updated_turn_off_port,
             can_be_turned_off: updated_can_be_turned_off,
-            port_forwards: machine_details.get().port_forwards.clone(), // Keep existing port forwards
+            port_forwards: updated_port_forwards,
         };
 
         leptos::task::spawn_local(async move {
@@ -281,6 +284,149 @@ fn MachineDetailPage() -> impl IntoView {
                         class="w-full rounded-lg border border-gray-300 px-3 py-2"
                         style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
                     />
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <label style="font-weight: bold;">
+                            Port Forwards
+                        </label>
+                        <button
+                            type="button"
+                            on:click=move |_| {
+                                set_port_forwards.update(|pfs| {
+                                    pfs.push(PortForward {
+                                        name: None,
+                                        local_port: 0,
+                                        target_port: 0,
+                                    });
+                                });
+                            }
+                            style="color: #2563eb; background: none; border: none; cursor: pointer;"
+                        >
+                            + Add Port Forward
+                        </button>
+                    </div>
+                    <Show
+                        when=move || !port_forwards.get().is_empty()
+                        fallback=|| {
+                            view! { <p style="color: #6b7280;">No port forwards configured.</p> }
+                        }
+                    >
+                        <div class="port-forward-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <For
+                                each=move || {
+                                    port_forwards
+                                        .get()
+                                        .into_iter()
+                                        .enumerate()
+                                        .collect::<Vec<(usize, PortForward)>>()
+                                }
+                                key=|(idx, _)| *idx
+                                children=move |(idx, _port_forward)| {
+                                    view! {
+                                        <div
+                                            class="port-forward-item"
+                                            style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 0.5rem; align-items: center;"
+                                        >
+                                            <input
+                                                type="text"
+                                                placeholder="Name"
+                                                value=move || {
+                                                    port_forwards
+                                                        .get()
+                                                        .get(idx)
+                                                        .and_then(|pf| pf.name.clone())
+                                                        .unwrap_or_default()
+                                                }
+                                                on:input=move |ev| {
+                                                    let target = ev.target().unwrap();
+                                                    let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                    let value = input.value();
+                                                    let trimmed = value.trim().is_empty();
+                                                    set_port_forwards.update(|pfs| {
+                                                        if let Some(pf) = pfs.get_mut(idx) {
+                                                            pf.name = if trimmed {
+                                                                None
+                                                            } else {
+                                                                Some(value.clone())
+                                                            };
+                                                        }
+                                                    });
+                                                }
+                                                class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                                                style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                                            />
+                                            <input
+                                                type="number"
+                                                placeholder="Local Port"
+                                                min="0"
+                                                max="65535"
+                                                value=move || {
+                                                    port_forwards
+                                                        .get()
+                                                        .get(idx)
+                                                        .map(|pf| pf.local_port.to_string())
+                                                        .unwrap_or_default()
+                                                }
+                                                on:input=move |ev| {
+                                                    let target = ev.target().unwrap();
+                                                    let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                    let value = input.value();
+                                                    let parsed = value.parse::<u16>().unwrap_or(0);
+                                                    set_port_forwards.update(|pfs| {
+                                                        if let Some(pf) = pfs.get_mut(idx) {
+                                                            pf.local_port = parsed;
+                                                        }
+                                                    });
+                                                }
+                                                class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                                                style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                                            />
+                                            <input
+                                                type="number"
+                                                placeholder="Target Port"
+                                                min="0"
+                                                max="65535"
+                                                value=move || {
+                                                    port_forwards
+                                                        .get()
+                                                        .get(idx)
+                                                        .map(|pf| pf.target_port.to_string())
+                                                        .unwrap_or_default()
+                                                }
+                                                on:input=move |ev| {
+                                                    let target = ev.target().unwrap();
+                                                    let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                    let value = input.value();
+                                                    let parsed = value.parse::<u16>().unwrap_or(0);
+                                                    set_port_forwards.update(|pfs| {
+                                                        if let Some(pf) = pfs.get_mut(idx) {
+                                                            pf.target_port = parsed;
+                                                        }
+                                                    });
+                                                }
+                                                class="w-full rounded-lg border border-gray-300 px-3 py-2"
+                                                style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
+                                            />
+                                            <button
+                                                type="button"
+                                                on:click=move |_| {
+                                                    set_port_forwards.update(|pfs| {
+                                                        if idx < pfs.len() {
+                                                            pfs.remove(idx);
+                                                        }
+                                                    });
+                                                }
+                                                style="color: #dc2626; background: none; border: none; cursor: pointer;"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            />
+                        </div>
+                    </Show>
                 </div>
                 <div>
                     <label

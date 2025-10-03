@@ -121,6 +121,22 @@ pub struct AddMachineForm {
     pub period_minutes: Option<u32>,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct MachinePayload {
+    #[validate(custom(function = "validate_mac"))]
+    pub mac: String,
+    #[validate(custom(function = "validate_ip"))]
+    pub ip: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub turn_off_port: Option<u16>,
+    #[serde(default = "default_can_be_turned_off")]
+    pub can_be_turned_off: bool,
+    pub requests_per_hour: Option<u32>,
+    pub period_minutes: Option<u32>,
+    pub port_forwards: Option<Vec<PortForward>>,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct RequestRateConfig {
     pub max_requests: u32,

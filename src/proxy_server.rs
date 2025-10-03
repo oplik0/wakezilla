@@ -194,7 +194,6 @@ async fn show_machines_api(State(state): State<AppState>) -> impl IntoResponse {
     Json(machines)
 }
 
-
 async fn get_machine_details_api(
     State(state): State<AppState>,
     Path(mac): Path<String>,
@@ -213,37 +212,48 @@ async fn get_machine_details_api(
 async fn update_machine_api(
     State(state): State<AppState>,
     Path(mac): Path<String>,
-    JsonExtract(payload): JsonExtract<web::AddMachineForm>,
+    JsonExtract(payload): JsonExtract<web::MachinePayload>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<serde_json::Value>)> {
     let mut machines = state.machines.write().await;
-    
-    if let Some(machine) = machines.iter_mut().find(|m| m.mac == mac) {
-        // Update the machine with new data
-        machine.ip = payload.ip.parse().expect("Invalid IP address");
-        machine.name = payload.name;
-        machine.description = payload.description;
-        machine.turn_off_port = payload.turn_off_port;
-        machine.can_be_turned_off = payload.can_be_turned_off;
-        machine.request_rate = web::RequestRateConfig {
-            max_requests: payload.requests_per_hour.unwrap_or(1000),
-            period_minutes: payload.period_minutes.unwrap_or(60),
-        };
-        
-        if let Err(e) = web::save_machines(&machines) {
-            error!("Error saving machines: {}", e);
-            return Err((
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "Failed to save machines" })),
-            ));
-        }
-        
-        Ok(Json(serde_json::json!({ "status": "Machine updated" })))
-    } else {
-        Err((
+
+    // check if the machine exists
+    let exists = machines.iter().any(|m| m.mac == mac);
+    if !exists {
+        return Err((
             axum::http::StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Machine not found" })),
-        ))
+        ));
     }
+    // remove the machine to update
+    machines.retain(|m| m.mac != mac);
+
+    let new_machine = Machine {
+        mac: payload.mac.clone(),
+        ip: payload.ip.parse().expect("Invalid IP address"),
+        name: payload.name.clone(),
+        description: payload.description.clone(),
+        turn_off_port: payload.turn_off_port,
+        can_be_turned_off: payload.can_be_turned_off,
+        request_rate: web::RequestRateConfig {
+            max_requests: payload.requests_per_hour.unwrap_or(1000),
+            period_minutes: payload.period_minutes.unwrap_or(60),
+        },
+        port_forwards: payload.port_forwards.clone().unwrap_or_default(),
+    };
+
+    if let Err(e) = web::save_machines(&machines) {
+        error!("Error saving machines: {}", e);
+        return Err((
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": "Failed to save machines" })),
+        ));
+    }
+
+    // Restart proxy if needed
+    web::start_proxy_if_configured(&new_machine, &state);
+    machines.push(new_machine);
+
+    Ok(Json(serde_json::json!({ "status": "Machine updated" })))
 }
 
 async fn show_machines(State(state): State<AppState>) -> impl IntoResponse {
