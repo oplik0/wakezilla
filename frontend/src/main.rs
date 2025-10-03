@@ -1,97 +1,25 @@
+use leptos::prelude::*;
 use std::collections::HashMap;
 use web_sys::window;
 
+pub mod api;
 pub mod models;
-use gloo_net::http::Request;
-use leptos::{leptos_dom::logging::console_log, prelude::*};
+use leptos::leptos_dom::logging::console_log;
 use leptos_meta::*;
 use leptos_router::{
-    StaticSegment,
     components::{A, Route, Router, Routes},
+    hooks::use_params_map,
+    path,
 };
 use validator::Validate;
 
 use web_sys::{SubmitEvent, console};
 
-// API Configuration
-const API_BASE: &str = "http://localhost:3000/api";
-use crate::models::{DiscoveredDevice, Machine, NetworkInterface, PortForward};
-
-async fn create_machine(machine: Machine) -> Result<(), String> {
-    Request::post(&format!("{}/machines", API_BASE))
-        .json(&machine)
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-async fn delete_machine(mac: &str) -> Result<(), String> {
-    let payload = serde_json::json!({ "mac": mac });
-    Request::delete(&format!("{}/machines/delete", API_BASE))
-        .json(&payload)
-        .map_err(|e| e.to_string())?
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-async fn fetch_machines() -> Result<Vec<Machine>, String> {
-    Request::get(&format!("{}/machines", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn fetch_interfaces() -> Result<Vec<NetworkInterface>, String> {
-    Request::get(&format!("{}/interfaces", API_BASE))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>, String> {
-    let mut url = String::new();
-    if device.is_empty() {
-        url = format!("{}/scan", API_BASE);
-    } else {
-        url = format!("{}/scan?interface={}", API_BASE, device);
-    }
-    Request::get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-async fn is_machine_online(machine: &Machine) -> bool {
-    let url = format!(
-        "http://{}:{}/health",
-        machine.ip,
-        machine.turn_off_port.unwrap_or(3000)
-    );
-    let response = Request::get(&url).send().await;
-    match response {
-        Ok(res) => res.status() == 200,
-        Err(e) => {
-            console_log(&format!(
-                "Network error for machine {}: {}",
-                machine.name, e
-            ));
-            false // Mark as offline on network errors
-        }
-    }
-}
+use crate::api::{
+    create_machine, delete_machine, fetch_interfaces, fetch_machines, fetch_scan_network,
+    is_machine_online,
+};
+use crate::models::{DiscoveredDevice, Machine, NetworkInterface};
 
 #[component]
 fn Navbar() -> impl IntoView {
@@ -141,6 +69,26 @@ pub fn ErrorDisplay(
 }
 // Components
 #[component]
+fn MachineDetailPage() -> impl IntoView {
+    let params = use_params_map();
+    let mac = move || params.read().get("mac").unwrap_or_default();
+    console_log(&format!("MachineDetailPage for MAC: {}", mac()));
+
+    view! {
+        <div class="machine-detail-container">
+            <h1>Machine Details</h1>
+            <h2>MAC: {move || mac()}</h2>
+            <p>"Detailed view for the machine would be shown here."</p>
+            <div style="margin-top: 1rem;">
+                <a href="/" style="color: #2563eb; text-decoration: underline;">
+                    "Back to Home"
+                </a>
+            </div>
+        </div>
+    }
+}
+
+#[component]
 fn App() -> impl IntoView {
     provide_meta_context();
 
@@ -151,7 +99,8 @@ fn App() -> impl IntoView {
         <Router>
             <main class="container">
                 <Routes fallback=|| "Page not found">
-                    <Route path=StaticSegment("") view=HomePage />
+                    <Route path=path!("/") view=HomePage />
+                    <Route path=path!("/machines/:mac") view=MachineDetailPage />
                 </Routes>
             </main>
         </Router>
@@ -430,7 +379,7 @@ fn RegistredMachines(
                                             <td class="" style="padding: 0.75rem; font-size: 0.75rem;">
                                                 <a
                                                     class=""
-                                                    href="/machines/{ machine.mac }"
+                                                    href=format!("/machines/{}", machine.mac)
                                                     style="text-decoration: underline; color: #2563eb; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                                 >
                                                     {machine.name.clone()}
