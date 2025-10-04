@@ -72,6 +72,7 @@ pub fn api_routes(state: AppState) -> Router {
             "/api/machines/:mac/remote-turn-off",
             post(api_turn_off_remote_machine),
         )
+        .route("/api/machines/:mac/wake", post(api_wake_machine))
         .route("/api/machines/delete", delete(delete_machine_api))
         .with_state(state)
 }
@@ -599,13 +600,13 @@ async fn add_port_forward(
     Redirect::to("/")
 }
 
-async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode, String) {
-    let mac = match wol::parse_mac(&payload.mac) {
+async fn execute_wake(mac_input: &str) -> (axum::http::StatusCode, String) {
+    let parsed_mac = match wol::parse_mac(mac_input) {
         Ok(mac) => mac,
         Err(e) => {
             return (
                 axum::http::StatusCode::BAD_REQUEST,
-                format!("Invalid MAC address '{}': {}", payload.mac, e),
+                format!("Invalid MAC address '{}': {}", mac_input, e),
             );
         }
     };
@@ -614,16 +615,30 @@ async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode,
     let port = 9; // Default WOL port
     let count = 3;
 
-    match crate::wol::send_packets(&mac, bcast, port, count, &Default::default()).await {
+    match crate::wol::send_packets(&parsed_mac, bcast, port, count, &Default::default()).await {
         Ok(_) => (
             axum::http::StatusCode::OK,
-            format!("Sent WOL packet to {}", payload.mac),
+            format!("Sent WOL packet to {}", mac_input),
         ),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to send WOL packet: {}", e),
+            format!("Failed to send WOL packet to {}: {}", mac_input, e),
         ),
     }
+}
+
+async fn wake_machine(Form(payload): Form<WakeForm>) -> (axum::http::StatusCode, String) {
+    execute_wake(&payload.mac).await
+}
+
+async fn api_wake_machine(Path(mac): Path<String>) -> impl IntoResponse {
+    let (status, message) = execute_wake(&mac).await;
+    (
+        status,
+        Json(serde_json::json!({
+            "message": message,
+        })),
+    )
 }
 
 #[derive(serde::Deserialize)]
@@ -907,6 +922,21 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(message.contains("Invalid MAC address"));
+    }
+
+    #[tokio::test]
+    async fn api_wake_machine_returns_json_for_invalid_mac() {
+        let response = api_wake_machine(Path("invalid".to_string()))
+            .await
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body_bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body to be readable");
+        let json: serde_json::Value = serde_json::from_slice(&body_bytes)
+            .expect("response to be valid json");
+        assert!(json["message"].as_str().unwrap_or_default().contains("Invalid MAC"));
     }
 
     #[tokio::test]

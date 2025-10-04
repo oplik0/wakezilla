@@ -20,7 +20,7 @@ use web_sys::{SubmitEvent, console};
 
 use crate::api::{
     create_machine, delete_machine, fetch_interfaces, fetch_machines, fetch_scan_network,
-    get_details_machine, is_machine_online, turn_off_machine,
+    get_details_machine, is_machine_online, turn_off_machine, wake_machine,
 };
 use crate::models::{DiscoveredDevice, Machine, NetworkInterface, PortForward};
 
@@ -88,6 +88,8 @@ fn MachineDetailPage() -> impl IntoView {
     let (_period_minutes, _set_period_minutes) = signal(60u32);
     let (turn_off_loading, set_turn_off_loading) = signal(false);
     let (turn_off_feedback, set_turn_off_feedback) = signal::<Option<(bool, String)>>(None);
+    let (wake_loading, set_wake_loading) = signal(false);
+    let (wake_feedback, set_wake_feedback) = signal::<Option<(bool, String)>>(None);
 
     let can_turn_off_machine = Memo::new(move |_| {
         let machine = machine_details.get();
@@ -186,12 +188,46 @@ fn MachineDetailPage() -> impl IntoView {
                 Err(message) => {
                     set_turn_off_feedback.set(Some((false, message.clone())));
                     if let Some(window) = window() {
-                        let _ = window
-                            .alert_with_message(&format!("Failed to turn off machine: {}", message));
+                        let _ = window.alert_with_message(&format!(
+                            "Failed to turn off machine: {}",
+                            message
+                        ));
                     }
                 }
             }
             set_turn_off_loading.set(false);
+        });
+    };
+
+    let trigger_wake = move |_| {
+        if wake_loading.get() {
+            return;
+        }
+
+        let mac_address = mac();
+        set_wake_loading.set(true);
+        set_wake_feedback.set(None);
+
+        let set_wake_loading = set_wake_loading.clone();
+        let set_wake_feedback = set_wake_feedback.clone();
+
+        leptos::task::spawn_local(async move {
+            match wake_machine(&mac_address).await {
+                Ok(message) => {
+                    set_wake_feedback.set(Some((true, message.clone())));
+                    if let Some(window) = window() {
+                        let _ = window.alert_with_message(&message);
+                    }
+                }
+                Err(message) => {
+                    set_wake_feedback.set(Some((false, message.clone())));
+                    if let Some(window) = window() {
+                        let _ = window
+                            .alert_with_message(&format!("Failed to wake machine: {}", message));
+                    }
+                }
+            }
+            set_wake_loading.set(false);
         });
     };
 
@@ -326,19 +362,18 @@ fn MachineDetailPage() -> impl IntoView {
                 </div>
                 <div style="margin-bottom: 1rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <label style="font-weight: bold;">
-                            Port Forwards
-                        </label>
+                        <label style="font-weight: bold;">Port Forwards</label>
                         <button
                             type="button"
                             on:click=move |_| {
-                                set_port_forwards.update(|pfs| {
-                                    pfs.push(PortForward {
-                                        name: None,
-                                        local_port: 0,
-                                        target_port: 0,
+                                set_port_forwards
+                                    .update(|pfs| {
+                                        pfs.push(PortForward {
+                                            name: None,
+                                            local_port: 0,
+                                            target_port: 0,
+                                        });
                                     });
-                                });
                             }
                             style="color: #2563eb; background: none; border: none; cursor: pointer;"
                         >
@@ -351,7 +386,10 @@ fn MachineDetailPage() -> impl IntoView {
                             view! { <p style="color: #6b7280;">No port forwards configured.</p> }
                         }
                     >
-                        <div class="port-forward-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div
+                            class="port-forward-list"
+                            style="display: flex; flex-direction: column; gap: 0.75rem;"
+                        >
                             <For
                                 each=move || {
                                     port_forwards
@@ -382,15 +420,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                     let input: HtmlInputElement = target.dyn_into().unwrap();
                                                     let value = input.value();
                                                     let trimmed = value.trim().is_empty();
-                                                    set_port_forwards.update(|pfs| {
-                                                        if let Some(pf) = pfs.get_mut(idx) {
-                                                            pf.name = if trimmed {
-                                                                None
-                                                            } else {
-                                                                Some(value.clone())
-                                                            };
-                                                        }
-                                                    });
+                                                    set_port_forwards
+                                                        .update(|pfs| {
+                                                            if let Some(pf) = pfs.get_mut(idx) {
+                                                                pf.name = if trimmed { None } else { Some(value.clone()) };
+                                                            }
+                                                        });
                                                 }
                                                 class="w-full rounded-lg border border-gray-300 px-3 py-2"
                                                 style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
@@ -412,11 +447,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                     let input: HtmlInputElement = target.dyn_into().unwrap();
                                                     let value = input.value();
                                                     let parsed = value.parse::<u16>().unwrap_or(0);
-                                                    set_port_forwards.update(|pfs| {
-                                                        if let Some(pf) = pfs.get_mut(idx) {
-                                                            pf.local_port = parsed;
-                                                        }
-                                                    });
+                                                    set_port_forwards
+                                                        .update(|pfs| {
+                                                            if let Some(pf) = pfs.get_mut(idx) {
+                                                                pf.local_port = parsed;
+                                                            }
+                                                        });
                                                 }
                                                 class="w-full rounded-lg border border-gray-300 px-3 py-2"
                                                 style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
@@ -438,11 +474,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                     let input: HtmlInputElement = target.dyn_into().unwrap();
                                                     let value = input.value();
                                                     let parsed = value.parse::<u16>().unwrap_or(0);
-                                                    set_port_forwards.update(|pfs| {
-                                                        if let Some(pf) = pfs.get_mut(idx) {
-                                                            pf.target_port = parsed;
-                                                        }
-                                                    });
+                                                    set_port_forwards
+                                                        .update(|pfs| {
+                                                            if let Some(pf) = pfs.get_mut(idx) {
+                                                                pf.target_port = parsed;
+                                                            }
+                                                        });
                                                 }
                                                 class="w-full rounded-lg border border-gray-300 px-3 py-2"
                                                 style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
@@ -450,11 +487,12 @@ fn MachineDetailPage() -> impl IntoView {
                                             <button
                                                 type="button"
                                                 on:click=move |_| {
-                                                    set_port_forwards.update(|pfs| {
-                                                        if idx < pfs.len() {
-                                                            pfs.remove(idx);
-                                                        }
-                                                    });
+                                                    set_port_forwards
+                                                        .update(|pfs| {
+                                                            if idx < pfs.len() {
+                                                                pfs.remove(idx);
+                                                            }
+                                                        });
                                                 }
                                                 style="color: #dc2626; background: none; border: none; cursor: pointer;"
                                             >
@@ -503,52 +541,59 @@ fn MachineDetailPage() -> impl IntoView {
                 </div>
             </form>
 
-            <div
-                style="margin: 1rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;"
-            >
+            <div style="margin: 1rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;">
                 <h3 style="margin-bottom: 0.75rem;">Actions</h3>
-                <button
-                    type="button"
-                    class="rounded-lg bg-red-600 px-4 py-2 text-white"
-                    style="background-color: #dc2626; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
-                    on:click=trigger_turn_off
-                    disabled=move || turn_off_loading.get() || !can_turn_off_machine.get()
-                >
-                    {move || {
-                        if turn_off_loading.get() {
-                            "Turning off..."
-                        } else {
-                            "Turn Off Machine"
-                        }
-                    }}
-                </button>
-                <Show
-                    when=move || turn_off_feedback.get().is_some()
-                    fallback=|| view! { <></> }
-                >
-                    {move || {
-                        let (style, message) = turn_off_feedback
-                            .get()
-                            .map(|(success, message)| {
-                                let color = if success { "#16a34a" } else { "#dc2626" };
-                                (
-                                    format!("color: {}; margin-top: 0.75rem;", color),
-                                    message,
-                                )
-                            })
-                            .unwrap_or_else(|| {
-                                (
-                                    "margin-top: 0.75rem; color: transparent;".to_string(),
-                                    String::new(),
-                                )
-                            });
-                        view! { <p style=style>{message}</p> }
-                    }}
-                </Show>
-                <Show
-                    when=move || !can_turn_off_machine.get()
-                    fallback=|| view! { <></> }
-                >
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button
+                        type="button"
+                        class="rounded-lg bg-green-600 px-4 py-2 text-white"
+                        style="background-color: #16a34a; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
+                        on:click=trigger_wake
+                        disabled=move || wake_loading.get()
+                    >
+                        {move || { if wake_loading.get() { "Waking..." } else { "Wake Machine" } }}
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-lg bg-red-600 px-4 py-2 text-white"
+                        style="background-color: #dc2626; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
+                        on:click=trigger_turn_off
+                        disabled=move || turn_off_loading.get() || !can_turn_off_machine.get()
+                    >
+                        {move || {
+                            if turn_off_loading.get() {
+                                "Turning off..."
+                            } else {
+                                "Turn Off Machine"
+                            }
+                        }}
+                    </button>
+                </div>
+                {move || {
+                    let (style, message) = wake_feedback
+                        .get()
+                        .map(|(success, message)| {
+                            let color = if success { "#16a34a" } else { "#dc2626" };
+                            (format!("color: {}; margin-top: 0.75rem;", color), message)
+                        })
+                        .unwrap_or_else(|| {
+                            ("margin-top: 0.75rem; color: transparent;".to_string(), String::new())
+                        });
+                    view! { <p style=style>{message}</p> }
+                }}
+                {move || {
+                    let (style, message) = turn_off_feedback
+                        .get()
+                        .map(|(success, message)| {
+                            let color = if success { "#16a34a" } else { "#dc2626" };
+                            (format!("color: {}; margin-top: 0.75rem;", color), message)
+                        })
+                        .unwrap_or_else(|| {
+                            ("margin-top: 0.75rem; color: transparent;".to_string(), String::new())
+                        });
+                    view! { <p style=style>{message}</p> }
+                }}
+                <Show when=move || !can_turn_off_machine.get() fallback=|| view! { <></> }>
                     <p style="margin-top: 0.75rem; color: #6b7280;">
                         Configure a turn-off port and enable remote turn-off to activate this action.
                     </p>
@@ -757,6 +802,7 @@ fn RegistredMachines(
     status_machine: ReadSignal<HashMap<String, bool>>,
     set_registred_machines: WriteSignal<Vec<Machine>>,
 ) -> impl IntoView {
+    let (wake_in_progress, set_wake_in_progress) = signal::<Option<String>>(None);
     let (turn_off_in_progress, set_turn_off_in_progress) = signal::<Option<String>>(None);
 
     let on_delete = move |mac_to_delete: String| {
@@ -855,14 +901,25 @@ fn RegistredMachines(
                                     let machine_mac_for_disable = machine_mac_for_turn_off.clone();
                                     let machine_mac_for_label = machine_mac_for_turn_off.clone();
                                     let machine_name_for_alert = machine.name.clone();
-                                    let can_turn_off_machine =
-                                        machine.can_be_turned_off && machine.turn_off_port.is_some();
-                                    let set_turn_off_in_progress_btn =
-                                        set_turn_off_in_progress.clone();
-                                    let turn_off_in_progress_for_disable =
-                                        turn_off_in_progress.clone();
-                                    let turn_off_in_progress_for_label = turn_off_in_progress.clone();
-                                    let turn_off_in_progress_for_click = turn_off_in_progress.clone();
+                                    let wake_mac_base = machine.mac.clone();
+                                    let wake_mac_for_disable = wake_mac_base.clone();
+                                    let wake_mac_for_label = wake_mac_base.clone();
+                                    let wake_mac_for_click_check = wake_mac_base.clone();
+                                    let machine_name_for_wake = machine.name.clone();
+                                    let set_wake_in_progress_btn = set_wake_in_progress.clone();
+                                    let wake_in_progress_for_disable = wake_in_progress.clone();
+                                    let wake_in_progress_for_label = wake_in_progress.clone();
+                                    let wake_in_progress_for_click = wake_in_progress.clone();
+                                    let can_turn_off_machine = machine.can_be_turned_off
+                                        && machine.turn_off_port.is_some();
+                                    let set_turn_off_in_progress_btn = set_turn_off_in_progress
+                                        .clone();
+                                    let turn_off_in_progress_for_disable = turn_off_in_progress
+                                        .clone();
+                                    let turn_off_in_progress_for_label = turn_off_in_progress
+                                        .clone();
+                                    let turn_off_in_progress_for_click = turn_off_in_progress
+                                        .clone();
                                     // Clone the machine for the closure
                                     view! {
                                         <tr
@@ -919,29 +976,86 @@ fn RegistredMachines(
                                             <td class="" style="padding: 0.75rem;">
                                                 <button
                                                     on:click=move |_| {
+                                                        if wake_in_progress_for_click.get().as_ref()
+                                                            == Some(&wake_mac_for_click_check)
+                                                        {
+                                                            return;
+                                                        }
+                                                        set_wake_in_progress_btn.set(Some(wake_mac_base.clone()));
+                                                        let set_wake_after = set_wake_in_progress_btn.clone();
+                                                        let mac_for_request = wake_mac_base.clone();
+                                                        let name_for_alert = machine_name_for_wake.clone();
+                                                        leptos::task::spawn_local(async move {
+                                                            match wake_machine(&mac_for_request).await {
+                                                                Ok(message) => {
+                                                                    if let Some(win) = window() {
+                                                                        let _ = win.alert_with_message(&message);
+                                                                    }
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Wake request sent for {} ({})",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                        ),
+                                                                    );
+                                                                }
+                                                                Err(err) => {
+                                                                    if let Some(win) = window() {
+                                                                        let _ = win
+                                                                            .alert_with_message(
+                                                                                &format!("Failed to wake machine: {}", err),
+                                                                            );
+                                                                    }
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Failed to wake {} ({}): {}",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                            err,
+                                                                        ),
+                                                                    );
+                                                                }
+                                                            }
+                                                            set_wake_after.set(None);
+                                                        });
+                                                    }
+                                                    style="color: #16a34a; background: none; border: none; cursor: pointer; font-size: 1rem; margin-right: 0.5rem;"
+                                                    disabled=move || {
+                                                        wake_in_progress_for_disable.get().as_ref()
+                                                            == Some(&wake_mac_for_disable)
+                                                    }
+                                                >
+                                                    {move || {
+                                                        if wake_in_progress_for_label.get().as_ref()
+                                                            == Some(&wake_mac_for_label)
+                                                        {
+                                                            "⏳".to_string()
+                                                        } else {
+                                                            "⚡".to_string()
+                                                        }
+                                                    }}
+                                                </button>
+                                                <button
+                                                    on:click=move |_| {
                                                         if !can_turn_off_machine {
                                                             if let Some(win) = window() {
-                                                                let _ = win.alert_with_message(
-                                                                    "Enable remote turn-off with a valid port before triggering this action.",
-                                                                );
+                                                                let _ = win
+                                                                    .alert_with_message(
+                                                                        "Enable remote turn-off with a valid port before triggering this action.",
+                                                                    );
                                                             }
                                                             return;
                                                         }
-
-                                                        if turn_off_in_progress_for_click
-                                                            .get()
-                                                            .as_ref()
+                                                        if turn_off_in_progress_for_click.get().as_ref()
                                                             == Some(&machine_mac_for_turn_off)
                                                         {
                                                             return;
                                                         }
-
                                                         set_turn_off_in_progress_btn
                                                             .set(Some(machine_mac_for_turn_off.clone()));
-                                                        let set_turn_off_after =
-                                                            set_turn_off_in_progress_btn.clone();
-                                                        let mac_for_request =
-                                                            machine_mac_for_turn_off.clone();
+                                                        let set_turn_off_after = set_turn_off_in_progress_btn
+                                                            .clone();
+                                                        let mac_for_request = machine_mac_for_turn_off.clone();
                                                         let name_for_alert = machine_name_for_alert.clone();
                                                         leptos::task::spawn_local(async move {
                                                             match turn_off_machine(&mac_for_request).await {
@@ -949,22 +1063,29 @@ fn RegistredMachines(
                                                                     if let Some(win) = window() {
                                                                         let _ = win.alert_with_message(&message);
                                                                     }
-                                                                    console_log(&format!(
-                                                                        "Turn-off request sent for {} ({})",
-                                                                        name_for_alert, mac_for_request
-                                                                    ));
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Turn-off request sent for {} ({})",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                        ),
+                                                                    );
                                                                 }
                                                                 Err(err) => {
                                                                     if let Some(win) = window() {
-                                                                        let _ = win.alert_with_message(&format!(
-                                                                            "Failed to turn off machine: {}",
-                                                                            err
-                                                                        ));
+                                                                        let _ = win
+                                                                            .alert_with_message(
+                                                                                &format!("Failed to turn off machine: {}", err),
+                                                                            );
                                                                     }
-                                                                    console_log(&format!(
-                                                                        "Failed to turn off {} ({}): {}",
-                                                                        name_for_alert, mac_for_request, err
-                                                                    ));
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Failed to turn off {} ({}): {}",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                            err,
+                                                                        ),
+                                                                    );
                                                                 }
                                                             }
                                                             set_turn_off_after.set(None);
@@ -973,16 +1094,12 @@ fn RegistredMachines(
                                                     style="color: #dc2626; background: none; border: none; cursor: pointer; font-size: 1rem; margin-right: 0.5rem;"
                                                     disabled=move || {
                                                         !can_turn_off_machine
-                                                            || turn_off_in_progress_for_disable
-                                                                .get()
-                                                                .as_ref()
+                                                            || turn_off_in_progress_for_disable.get().as_ref()
                                                                 == Some(&machine_mac_for_disable)
                                                     }
                                                 >
                                                     {move || {
-                                                        if turn_off_in_progress_for_label
-                                                            .get()
-                                                            .as_ref()
+                                                        if turn_off_in_progress_for_label.get().as_ref()
                                                             == Some(&machine_mac_for_label)
                                                         {
                                                             "⏳".to_string()
