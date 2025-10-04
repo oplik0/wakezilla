@@ -83,6 +83,27 @@ pub async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>,
         .map_err(|e| e.to_string())
 }
 
+pub async fn turn_off_machine(mac: &str) -> Result<String, String> {
+    let response = Request::post(&format!("{}/machines/{}/remote-turn-off", API_BASE, mac))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let is_success = response.ok();
+    let body: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+    let message = body
+        .get("message")
+        .and_then(|value| value.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| body.to_string());
+
+    if is_success {
+        Ok(message)
+    } else {
+        Err(message)
+    }
+}
+
 pub async fn is_machine_online(machine: &Machine) -> bool {
     let url = format!(
         "http://{}:{}/health",

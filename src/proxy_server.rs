@@ -68,6 +68,10 @@ pub fn api_routes(state: AppState) -> Router {
         )
         .route("/api/machines/:mac", get(get_machine_details_api))
         .route("/api/machines/:mac", put(update_machine_api))
+        .route(
+            "/api/machines/:mac/remote-turn-off",
+            post(api_turn_off_remote_machine),
+        )
         .route("/api/machines/delete", delete(delete_machine_api))
         .with_state(state)
 }
@@ -390,13 +394,10 @@ async fn delete_machine(
     Redirect::to("/")
 }
 
-async fn turn_off_remote_machine(
-    State(state): State<AppState>,
-    Form(payload): Form<RemoteTurnOffForm>,
-) -> (axum::http::StatusCode, String) {
+async fn execute_remote_turn_off(state: &AppState, mac: &str) -> (axum::http::StatusCode, String) {
     let machine = {
         let machines = state.machines.read().await;
-        machines.iter().find(|m| m.mac == payload.mac).cloned()
+        machines.iter().find(|m| m.mac == mac).cloned()
     };
 
     if let Some(machine) = machine {
@@ -406,7 +407,7 @@ async fn turn_off_remote_machine(
                 Ok(_) => {
                     return (
                         axum::http::StatusCode::OK,
-                        format!("Sent turn-off request to {}", payload.mac),
+                        format!("Sent turn-off request to {}", mac),
                     );
                 }
                 Err(e) => {
@@ -419,14 +420,34 @@ async fn turn_off_remote_machine(
         } else {
             return (
                 axum::http::StatusCode::BAD_REQUEST,
-                format!("No turn-off port configured for {}", payload.mac),
+                format!("No turn-off port configured for {}", mac),
             );
         }
     }
 
     (
         axum::http::StatusCode::NOT_FOUND,
-        format!("Machine {} not found", payload.mac),
+        format!("Machine {} not found", mac),
+    )
+}
+
+async fn turn_off_remote_machine(
+    State(state): State<AppState>,
+    Form(payload): Form<RemoteTurnOffForm>,
+) -> (axum::http::StatusCode, String) {
+    execute_remote_turn_off(&state, &payload.mac).await
+}
+
+async fn api_turn_off_remote_machine(
+    State(state): State<AppState>,
+    Path(mac): Path<String>,
+) -> impl IntoResponse {
+    let (status, message) = execute_remote_turn_off(&state, &mac).await;
+    (
+        status,
+        Json(serde_json::json!({
+            "message": message,
+        })),
     )
 }
 
@@ -650,6 +671,7 @@ async fn machine_health(Json(payload): Json<MachineHealthRequest>) -> Json<serde
 mod tests {
     use super::*;
     use crate::test_support::ENV_LOCK;
+    use axum::body::to_bytes;
     use axum::extract::Form;
     use axum::extract::Path;
     use axum::http::StatusCode;
@@ -748,6 +770,29 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(message.contains("No turn-off port"));
+    }
+
+    #[tokio::test]
+    async fn api_turn_off_remote_machine_returns_json_message() {
+        let state = state_with_machines(vec![]);
+        let response =
+            api_turn_off_remote_machine(State(state), Path("AA:BB:CC:DD:EE:FF".to_string()))
+                .await
+                .into_response();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body_bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body to be readable");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("response to be valid json");
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("not found"),
+            "expected message to mention missing machine"
+        );
     }
 
     #[tokio::test]

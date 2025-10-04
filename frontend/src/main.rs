@@ -10,7 +10,7 @@ pub mod models;
 use leptos::leptos_dom::logging::console_log;
 use leptos_meta::*;
 use leptos_router::{
-    components::{A, Route, Router, Routes},
+    components::{Route, Router, Routes},
     hooks::use_params_map,
     path,
 };
@@ -20,7 +20,7 @@ use web_sys::{SubmitEvent, console};
 
 use crate::api::{
     create_machine, delete_machine, fetch_interfaces, fetch_machines, fetch_scan_network,
-    get_details_machine, is_machine_online,
+    get_details_machine, is_machine_online, turn_off_machine,
 };
 use crate::models::{DiscoveredDevice, Machine, NetworkInterface, PortForward};
 
@@ -86,6 +86,13 @@ fn MachineDetailPage() -> impl IntoView {
     let (port_forwards, set_port_forwards) = signal::<Vec<PortForward>>(vec![]);
     let (_requests_per_hour, _set_requests_per_hour) = signal(1000u32);
     let (_period_minutes, _set_period_minutes) = signal(60u32);
+    let (turn_off_loading, set_turn_off_loading) = signal(false);
+    let (turn_off_feedback, set_turn_off_feedback) = signal::<Option<(bool, String)>>(None);
+
+    let can_turn_off_machine = Memo::new(move |_| {
+        let machine = machine_details.get();
+        machine.can_be_turned_off && machine.turn_off_port.is_some()
+    });
 
     // Update form fields when machine details load
     Effect::new(move || {
@@ -153,6 +160,38 @@ fn MachineDetailPage() -> impl IntoView {
                 }
             }
             set_loading.set(false);
+        });
+    };
+
+    let trigger_turn_off = move |_| {
+        if !can_turn_off_machine.get() || turn_off_loading.get() {
+            return;
+        }
+
+        let mac_address = mac();
+        set_turn_off_loading.set(true);
+        set_turn_off_feedback.set(None);
+
+        let set_turn_off_loading = set_turn_off_loading.clone();
+        let set_turn_off_feedback = set_turn_off_feedback.clone();
+
+        leptos::task::spawn_local(async move {
+            match turn_off_machine(&mac_address).await {
+                Ok(message) => {
+                    set_turn_off_feedback.set(Some((true, message.clone())));
+                    if let Some(window) = window() {
+                        let _ = window.alert_with_message(&message);
+                    }
+                }
+                Err(message) => {
+                    set_turn_off_feedback.set(Some((false, message.clone())));
+                    if let Some(window) = window() {
+                        let _ = window
+                            .alert_with_message(&format!("Failed to turn off machine: {}", message));
+                    }
+                }
+            }
+            set_turn_off_loading.set(false);
         });
     };
 
@@ -464,6 +503,58 @@ fn MachineDetailPage() -> impl IntoView {
                 </div>
             </form>
 
+            <div
+                style="margin: 1rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;"
+            >
+                <h3 style="margin-bottom: 0.75rem;">Actions</h3>
+                <button
+                    type="button"
+                    class="rounded-lg bg-red-600 px-4 py-2 text-white"
+                    style="background-color: #dc2626; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
+                    on:click=trigger_turn_off
+                    disabled=move || turn_off_loading.get() || !can_turn_off_machine.get()
+                >
+                    {move || {
+                        if turn_off_loading.get() {
+                            "Turning off..."
+                        } else {
+                            "Turn Off Machine"
+                        }
+                    }}
+                </button>
+                <Show
+                    when=move || turn_off_feedback.get().is_some()
+                    fallback=|| view! { <></> }
+                >
+                    {move || {
+                        let (style, message) = turn_off_feedback
+                            .get()
+                            .map(|(success, message)| {
+                                let color = if success { "#16a34a" } else { "#dc2626" };
+                                (
+                                    format!("color: {}; margin-top: 0.75rem;", color),
+                                    message,
+                                )
+                            })
+                            .unwrap_or_else(|| {
+                                (
+                                    "margin-top: 0.75rem; color: transparent;".to_string(),
+                                    String::new(),
+                                )
+                            });
+                        view! { <p style=style>{message}</p> }
+                    }}
+                </Show>
+                <Show
+                    when=move || !can_turn_off_machine.get()
+                    fallback=|| view! { <></> }
+                >
+                    <p style="margin-top: 0.75rem; color: #6b7280;">
+                        Configure a turn-off port and enable remote turn-off to activate this action.
+                    </p>
+                </Show>
+            </div>
+
             <div style="margin-top: 1rem;">
                 <h3>Raw Machine Data</h3>
                 <pre class="machine-json">
@@ -666,6 +757,8 @@ fn RegistredMachines(
     status_machine: ReadSignal<HashMap<String, bool>>,
     set_registred_machines: WriteSignal<Vec<Machine>>,
 ) -> impl IntoView {
+    let (turn_off_in_progress, set_turn_off_in_progress) = signal::<Option<String>>(None);
+
     let on_delete = move |mac_to_delete: String| {
         leptos::task::spawn_local(async move {
             // Call the API to delete the machine
@@ -758,6 +851,18 @@ fn RegistredMachines(
                                 .iter()
                                 .map(|m| {
                                     let machine = m.clone();
+                                    let machine_mac_for_turn_off = machine.mac.clone();
+                                    let machine_mac_for_disable = machine_mac_for_turn_off.clone();
+                                    let machine_mac_for_label = machine_mac_for_turn_off.clone();
+                                    let machine_name_for_alert = machine.name.clone();
+                                    let can_turn_off_machine =
+                                        machine.can_be_turned_off && machine.turn_off_port.is_some();
+                                    let set_turn_off_in_progress_btn =
+                                        set_turn_off_in_progress.clone();
+                                    let turn_off_in_progress_for_disable =
+                                        turn_off_in_progress.clone();
+                                    let turn_off_in_progress_for_label = turn_off_in_progress.clone();
+                                    let turn_off_in_progress_for_click = turn_off_in_progress.clone();
                                     // Clone the machine for the closure
                                     view! {
                                         <tr
@@ -812,6 +917,80 @@ fn RegistredMachines(
                                                 </span>
                                             </td>
                                             <td class="" style="padding: 0.75rem;">
+                                                <button
+                                                    on:click=move |_| {
+                                                        if !can_turn_off_machine {
+                                                            if let Some(win) = window() {
+                                                                let _ = win.alert_with_message(
+                                                                    "Enable remote turn-off with a valid port before triggering this action.",
+                                                                );
+                                                            }
+                                                            return;
+                                                        }
+
+                                                        if turn_off_in_progress_for_click
+                                                            .get()
+                                                            .as_ref()
+                                                            == Some(&machine_mac_for_turn_off)
+                                                        {
+                                                            return;
+                                                        }
+
+                                                        set_turn_off_in_progress_btn
+                                                            .set(Some(machine_mac_for_turn_off.clone()));
+                                                        let set_turn_off_after =
+                                                            set_turn_off_in_progress_btn.clone();
+                                                        let mac_for_request =
+                                                            machine_mac_for_turn_off.clone();
+                                                        let name_for_alert = machine_name_for_alert.clone();
+                                                        leptos::task::spawn_local(async move {
+                                                            match turn_off_machine(&mac_for_request).await {
+                                                                Ok(message) => {
+                                                                    if let Some(win) = window() {
+                                                                        let _ = win.alert_with_message(&message);
+                                                                    }
+                                                                    console_log(&format!(
+                                                                        "Turn-off request sent for {} ({})",
+                                                                        name_for_alert, mac_for_request
+                                                                    ));
+                                                                }
+                                                                Err(err) => {
+                                                                    if let Some(win) = window() {
+                                                                        let _ = win.alert_with_message(&format!(
+                                                                            "Failed to turn off machine: {}",
+                                                                            err
+                                                                        ));
+                                                                    }
+                                                                    console_log(&format!(
+                                                                        "Failed to turn off {} ({}): {}",
+                                                                        name_for_alert, mac_for_request, err
+                                                                    ));
+                                                                }
+                                                            }
+                                                            set_turn_off_after.set(None);
+                                                        });
+                                                    }
+                                                    style="color: #dc2626; background: none; border: none; cursor: pointer; font-size: 1rem; margin-right: 0.5rem;"
+                                                    disabled=move || {
+                                                        !can_turn_off_machine
+                                                            || turn_off_in_progress_for_disable
+                                                                .get()
+                                                                .as_ref()
+                                                                == Some(&machine_mac_for_disable)
+                                                    }
+                                                >
+                                                    {move || {
+                                                        if turn_off_in_progress_for_label
+                                                            .get()
+                                                            .as_ref()
+                                                            == Some(&machine_mac_for_label)
+                                                        {
+                                                            "⏳".to_string()
+                                                        } else {
+                                                            "⏻".to_string()
+                                                        }
+                                                    }}
+                                                </button>
                                                 <button
                                                     on:click=move |_| {
                                                         if window()
