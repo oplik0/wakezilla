@@ -232,377 +232,364 @@ fn MachineDetailPage() -> impl IntoView {
     };
 
     view! {
-        <div class="machine-detail-container">
-            <div style="margin-top: 1rem;">
-                <a href="/" style="color: #2563eb; text-decoration: underline;">
-                    "Back to Home"
-                </a>
-            </div>
-            <h3>Update Machine</h3>
-            <form
-                on:submit=update_machine
-                class="update-form"
-                style="margin: 1rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;"
-            >
-                <div style="margin-bottom: 1rem;">
-                    <label
-                        for="name"
-                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
-                    >
-                        Name
-                    </label>
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        required
-                        value=move || name.get()
-                        on:input=move |ev| {
-                            let target = ev.target().unwrap();
-                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                            set_name.set(input.value());
-                        }
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                    />
-                </div>
+        <div class="page-stack">
+            <a class="back-link" href="/">
+                <span aria-hidden="true">"←"</span>
+                <span>"Back to dashboard"</span>
+            </a>
 
-                <div style="margin-bottom: 1rem;">
-                    <label
-                        for="ip"
-                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
-                    >
-                        IP Address
-                    </label>
-                    <input
-                        type="text"
-                        id="ip"
-                        name="ip"
-                        required
-                        value=move || ip.get()
-                        on:input=move |ev| {
-                            let target = ev.target().unwrap();
-                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                            set_ip.set(input.value());
-                        }
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                    />
-                </div>
+            <div class="card">
+                <header class="card-header">
+                    <h2 class="card-title">
+                        {move || {
+                            let current_name = name.get();
+                            if current_name.trim().is_empty() {
+                                "Machine Overview".to_string()
+                            } else {
+                                current_name
+                            }
+                        }}
+                    </h2>
+                    <p class="card-subtitle">
+                        {move || format!("MAC {}", machine_details.get().mac)}
+                    </p>
+                </header>
 
-                <div style="margin-bottom: 1rem;">
-                    <label
-                        for="description"
-                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
-                    >
-                        Description
-                    </label>
-                    <input
-                        type="text"
-                        id="description"
-                        name="description"
-                        value=move || description.get()
-                        on:input=move |ev| {
-                            let target = ev.target().unwrap();
-                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                            set_description.set(input.value());
-                        }
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                    />
-                </div>
+                <form on:submit=update_machine class="form-grid">
+                    <div class="form-grid two-column">
+                        <div class="field">
+                            <label for="name">"Name"</label>
+                            <input
+                                type="text"
+                                id="name"
+                                name="name"
+                                class="input"
+                                required
+                                value=move || name.get()
+                                on:input=move |ev| {
+                                    let target = ev.target().unwrap();
+                                    let input: HtmlInputElement = target.dyn_into().unwrap();
+                                    set_name.set(input.value());
+                                }
+                            />
+                        </div>
+                        <div class="field">
+                            <label for="ip">"IP address"</label>
+                            <input
+                                type="text"
+                                id="ip"
+                                name="ip"
+                                class="input"
+                                required
+                                value=move || ip.get()
+                                on:input=move |ev| {
+                                    let target = ev.target().unwrap();
+                                    let input: HtmlInputElement = target.dyn_into().unwrap();
+                                    set_ip.set(input.value());
+                                }
+                            />
+                        </div>
+                    </div>
 
-                <div style="margin-bottom: 1rem;" class="flex items-center">
-                    <input
-                        type="checkbox"
-                        id="can_be_turned_off"
-                        name="can_be_turned_off"
-                        checked=move || can_be_turned_off.get()
-                        on:change=move |ev| {
-                            let target = ev.target().unwrap();
-                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                            set_can_be_turned_off.set(input.checked());
-                        }
-                        class="mr-2"
-                    />
-                    <label for="can_be_turned_off" style="font-weight: bold;">
-                        Can be turned off remotely
-                    </label>
-                </div>
+                    <div class="field">
+                        <label for="description">"Description"</label>
+                        <input
+                            type="text"
+                            id="description"
+                            name="description"
+                            class="input"
+                            value=move || description.get()
+                            on:input=move |ev| {
+                                let target = ev.target().unwrap();
+                                let input: HtmlInputElement = target.dyn_into().unwrap();
+                                set_description.set(input.value());
+                            }
+                        />
+                        <p class="field-help">"Optional label to help the team recognise this machine."</p>
+                    </div>
 
-                <div style=move || {
-                    if can_be_turned_off.get() {
-                        "display: block; margin-bottom: 1rem;"
-                    } else {
-                        "display: none; margin-bottom: 1rem;"
-                    }
-                }>
-                    <label
-                        for="turn_off_port"
-                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
+                    <div class="field field-toggle">
+                        <input
+                            type="checkbox"
+                            id="can_be_turned_off"
+                            name="can_be_turned_off"
+                            class="checkbox"
+                            checked=move || can_be_turned_off.get()
+                            on:change=move |ev| {
+                                let target = ev.target().unwrap();
+                                let input: HtmlInputElement = target.dyn_into().unwrap();
+                                set_can_be_turned_off.set(input.checked());
+                            }
+                        />
+                        <div class="field-toggle__content">
+                            <label for="can_be_turned_off">"Enable remote turn off"</label>
+                            <p class="field-help">"Requires an accessible shutdown endpoint on the machine."</p>
+                        </div>
+                    </div>
+
+                    <Show
+                        when=move || can_be_turned_off.get()
+                        fallback=|| view! { <></> }
                     >
-                        Turn Off Port
-                    </label>
-                    <input
-                        type="number"
-                        id="turn_off_port"
-                        name="turn_off_port"
-                        min="1"
-                        max="65535"
-                        value=move || turn_off_port.get().map(|p| p.to_string()).unwrap_or_default()
-                        on:input=move |ev| {
-                            let target = ev.target().unwrap();
-                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                            let value = input.value();
-                            set_turn_off_port.set(value.parse().ok());
-                        }
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                    />
-                </div>
-                <div style="margin-bottom: 1rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <label style="font-weight: bold;">Port Forwards</label>
-                        <button
-                            type="button"
-                            on:click=move |_| {
-                                set_port_forwards
-                                    .update(|pfs| {
+                        <div class="field">
+                            <label for="turn_off_port">"Turn off port"</label>
+                            <input
+                                type="number"
+                                id="turn_off_port"
+                                name="turn_off_port"
+                                class="input"
+                                min="1"
+                                max="65535"
+                                value=move || turn_off_port.get().map(|p| p.to_string()).unwrap_or_default()
+                                on:input=move |ev| {
+                                    let target = ev.target().unwrap();
+                                    let input: HtmlInputElement = target.dyn_into().unwrap();
+                                    let value = input.value();
+                                    set_turn_off_port.set(value.parse().ok());
+                                }
+                            />
+                            <p class="field-help">"Port exposed by the machine to receive shutdown requests."</p>
+                        </div>
+                    </Show>
+
+                    <div class="field">
+                        <div class="field-header">
+                            <label>"Port forwards"</label>
+                            <button
+                                type="button"
+                                class="btn btn-soft btn-sm"
+                                on:click=move |_| {
+                                    set_port_forwards.update(|pfs| {
                                         pfs.push(PortForward {
                                             name: None,
                                             local_port: 0,
                                             target_port: 0,
                                         });
                                     });
-                            }
-                            style="color: #2563eb; background: none; border: none; cursor: pointer;"
-                        >
-                            + Add Port Forward
-                        </button>
-                    </div>
-                    <Show
-                        when=move || !port_forwards.get().is_empty()
-                        fallback=|| {
-                            view! { <p style="color: #6b7280;">No port forwards configured.</p> }
-                        }
-                    >
-                        <div
-                            class="port-forward-list"
-                            style="display: flex; flex-direction: column; gap: 0.75rem;"
-                        >
-                            <For
-                                each=move || {
-                                    port_forwards
-                                        .get()
-                                        .into_iter()
-                                        .enumerate()
-                                        .collect::<Vec<(usize, PortForward)>>()
                                 }
-                                key=|(idx, _)| *idx
-                                children=move |(idx, _port_forward)| {
-                                    view! {
-                                        <div
-                                            class="port-forward-item"
-                                            style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 0.5rem; align-items: center;"
-                                        >
-                                            <input
-                                                type="text"
-                                                placeholder="Name"
-                                                value=move || {
-                                                    port_forwards
-                                                        .get()
-                                                        .get(idx)
-                                                        .and_then(|pf| pf.name.clone())
-                                                        .unwrap_or_default()
-                                                }
-                                                on:input=move |ev| {
-                                                    let target = ev.target().unwrap();
-                                                    let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                    let value = input.value();
-                                                    let trimmed = value.trim().is_empty();
-                                                    set_port_forwards
-                                                        .update(|pfs| {
-                                                            if let Some(pf) = pfs.get_mut(idx) {
-                                                                pf.name = if trimmed { None } else { Some(value.clone()) };
-                                                            }
-                                                        });
-                                                }
-                                                class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                                                style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                                            />
-                                            <input
-                                                type="number"
-                                                placeholder="Local Port"
-                                                min="0"
-                                                max="65535"
-                                                value=move || {
-                                                    port_forwards
-                                                        .get()
-                                                        .get(idx)
-                                                        .map(|pf| pf.local_port.to_string())
-                                                        .unwrap_or_default()
-                                                }
-                                                on:input=move |ev| {
-                                                    let target = ev.target().unwrap();
-                                                    let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                    let value = input.value();
-                                                    let parsed = value.parse::<u16>().unwrap_or(0);
-                                                    set_port_forwards
-                                                        .update(|pfs| {
-                                                            if let Some(pf) = pfs.get_mut(idx) {
-                                                                pf.local_port = parsed;
-                                                            }
-                                                        });
-                                                }
-                                                class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                                                style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                                            />
-                                            <input
-                                                type="number"
-                                                placeholder="Target Port"
-                                                min="0"
-                                                max="65535"
-                                                value=move || {
-                                                    port_forwards
-                                                        .get()
-                                                        .get(idx)
-                                                        .map(|pf| pf.target_port.to_string())
-                                                        .unwrap_or_default()
-                                                }
-                                                on:input=move |ev| {
-                                                    let target = ev.target().unwrap();
-                                                    let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                    let value = input.value();
-                                                    let parsed = value.parse::<u16>().unwrap_or(0);
-                                                    set_port_forwards
-                                                        .update(|pfs| {
-                                                            if let Some(pf) = pfs.get_mut(idx) {
-                                                                pf.target_port = parsed;
-                                                            }
-                                                        });
-                                                }
-                                                class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                                                style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                                            />
-                                            <button
-                                                type="button"
-                                                on:click=move |_| {
-                                                    set_port_forwards
-                                                        .update(|pfs| {
+                            >
+                                "+ Add port"
+                            </button>
+                        </div>
+                        <p class="field-help">"Start lightweight TCP tunnels when this machine is online."</p>
+                        <Show
+                            when=move || !port_forwards.get().is_empty()
+                            fallback=|| view! { <p class="field-empty">"No port forwards configured yet."</p> }
+                        >
+                            <div class="port-forward-list">
+                                <For
+                                    each=move || {
+                                        port_forwards
+                                            .get()
+                                            .into_iter()
+                                            .enumerate()
+                                            .collect::<Vec<(usize, PortForward)>>()
+                                    }
+                                    key=|(idx, _)| *idx
+                                    children=move |(idx, _port_forward)| {
+                                        view! {
+                                            <div class="port-forward-item">
+                                                <div class="field">
+                                                    <label class="sr-only">"Name"</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Name"
+                                                        class="input"
+                                                        value=move || {
+                                                            port_forwards
+                                                                .get()
+                                                                .get(idx)
+                                                                .and_then(|pf| pf.name.clone())
+                                                                .unwrap_or_default()
+                                                        }
+                                                        on:input=move |ev| {
+                                                            let target = ev.target().unwrap();
+                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                            let value = input.value();
+                                                            let trimmed = value.trim().is_empty();
+                                                            set_port_forwards.update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.name = if trimmed { None } else { Some(value.clone()) };
+                                                                }
+                                                            });
+                                                        }
+                                                    />
+                                                </div>
+                                                <div class="field">
+                                                    <label class="sr-only">"Local port"</label>
+                                                    <input
+                                                        type="number"
+                                                        placeholder="Local port"
+                                                        class="input"
+                                                        min="0"
+                                                        max="65535"
+                                                        value=move || {
+                                                            port_forwards
+                                                                .get()
+                                                                .get(idx)
+                                                                .map(|pf| pf.local_port.to_string())
+                                                                .unwrap_or_default()
+                                                        }
+                                                        on:input=move |ev| {
+                                                            let target = ev.target().unwrap();
+                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                            let value = input.value();
+                                                            let parsed = value.parse::<u16>().unwrap_or(0);
+                                                            set_port_forwards.update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.local_port = parsed;
+                                                                }
+                                                            });
+                                                        }
+                                                    />
+                                                </div>
+                                                <div class="field">
+                                                    <label class="sr-only">"Target port"</label>
+                                                    <input
+                                                        type="number"
+                                                        placeholder="Target port"
+                                                        class="input"
+                                                        min="0"
+                                                        max="65535"
+                                                        value=move || {
+                                                            port_forwards
+                                                                .get()
+                                                                .get(idx)
+                                                                .map(|pf| pf.target_port.to_string())
+                                                                .unwrap_or_default()
+                                                        }
+                                                        on:input=move |ev| {
+                                                            let target = ev.target().unwrap();
+                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                            let value = input.value();
+                                                            let parsed = value.parse::<u16>().unwrap_or(0);
+                                                            set_port_forwards.update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.target_port = parsed;
+                                                                }
+                                                            });
+                                                        }
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-ghost"
+                                                    on:click=move |_| {
+                                                        set_port_forwards.update(|pfs| {
                                                             if idx < pfs.len() {
                                                                 pfs.remove(idx);
                                                             }
                                                         });
-                                                }
-                                                style="color: #dc2626; background: none; border: none; cursor: pointer;"
-                                            >
-                                                Remove
-                                            </button>
-                                        </div>
+                                                    }
+                                                >
+                                                    "Remove"
+                                                </button>
+                                            </div>
+                                        }
                                     }
-                                }
-                            />
-                        </div>
-                    </Show>
-                </div>
-                <div>
-                    <label
-                        for="requests_per_hour"
-                        style="display: block; margin-bottom: 0.25rem; font-weight: bold;"
-                    >
-                        Requests Per Hour
-                    </label>
-                    <input
-                        type="number"
-                        id="requests_per_hour"
-                        name="requests_per_hour"
-                        min="1"
-                        value=move || _requests_per_hour.get().to_string()
-                        on:input=move |ev| {
-                            let target = ev.target().unwrap();
-                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                            if let Ok(value) = input.value().parse() {
-                                _set_requests_per_hour.set(value);
-                            }
-                        }
-                        class="w-full rounded-lg border border-gray-300 px-3 py-2"
-                        style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem;"
-                    />
-                </div>
-                <div>
-                    <button
-                        type="submit"
-                        class="rounded-lg bg-blue-600 px-4 py-2 text-white"
-                        style="background-color: #2563eb; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
-                        disabled=move || loading.get()
-                    >
-                        {move || if loading.get() { "Updating..." } else { "Update Machine" }}
-                    </button>
-                </div>
-            </form>
+                                />
+                            </div>
+                        </Show>
+                    </div>
 
-            <div style="margin: 1rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 0.5rem;">
-                <h3 style="margin-bottom: 0.75rem;">Actions</h3>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <div class="field">
+                        <label for="requests_per_hour">"Requests per hour"</label>
+                        <input
+                            type="number"
+                            id="requests_per_hour"
+                            name="requests_per_hour"
+                            class="input"
+                            min="1"
+                            value=move || _requests_per_hour.get().to_string()
+                            on:input=move |ev| {
+                                let target = ev.target().unwrap();
+                                let input: HtmlInputElement = target.dyn_into().unwrap();
+                                if let Ok(value) = input.value().parse() {
+                                    _set_requests_per_hour.set(value);
+                                }
+                            }
+                        />
+                    </div>
+
+                    <div class="form-footer">
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                            disabled=move || loading.get()
+                        >
+                            {move || if loading.get() { "Saving..." } else { "Save changes" }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card card-actions">
+                <header class="card-header">
+                    <h3 class="card-title">"Remote controls"</h3>
+                    <p class="card-subtitle">"Send wake and shutdown signals instantly."</p>
+                </header>
+                <div class="actions-row">
                     <button
                         type="button"
-                        class="rounded-lg bg-green-600 px-4 py-2 text-white"
-                        style="background-color: #16a34a; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
+                        class="btn btn-success"
                         on:click=trigger_wake
                         disabled=move || wake_loading.get()
                     >
-                        {move || { if wake_loading.get() { "Waking..." } else { "Wake Machine" } }}
+                        {move || if wake_loading.get() { "Waking..." } else { "Wake machine" }}
                     </button>
                     <button
                         type="button"
-                        class="rounded-lg bg-red-600 px-4 py-2 text-white"
-                        style="background-color: #dc2626; color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; cursor: pointer;"
+                        class="btn btn-danger"
                         on:click=trigger_turn_off
                         disabled=move || turn_off_loading.get() || !can_turn_off_machine.get()
                     >
-                        {move || {
-                            if turn_off_loading.get() {
-                                "Turning off..."
-                            } else {
-                                "Turn Off Machine"
-                            }
-                        }}
+                        {move || if turn_off_loading.get() { "Turning off..." } else { "Turn off machine" }}
                     </button>
                 </div>
                 {move || {
-                    let (style, message) = wake_feedback
-                        .get()
-                        .map(|(success, message)| {
-                            let color = if success { "#16a34a" } else { "#dc2626" };
-                            (format!("color: {}; margin-top: 0.75rem;", color), message)
-                        })
-                        .unwrap_or_else(|| {
-                            ("margin-top: 0.75rem; color: transparent;".to_string(), String::new())
-                        });
-                    view! { <p style=style>{message}</p> }
+                    if let Some((success, message)) = wake_feedback.get() {
+                        let class = if success {
+                            "feedback feedback--success"
+                        } else {
+                            "feedback feedback--danger"
+                        }
+                        .to_string();
+                        view! { <p class=class>{message}</p> }
+                    } else {
+                        let class = "feedback feedback--hidden".to_string();
+                        let empty = String::new();
+                        view! { <p class=class>{empty}</p> }
+                    }
                 }}
                 {move || {
-                    let (style, message) = turn_off_feedback
-                        .get()
-                        .map(|(success, message)| {
-                            let color = if success { "#16a34a" } else { "#dc2626" };
-                            (format!("color: {}; margin-top: 0.75rem;", color), message)
-                        })
-                        .unwrap_or_else(|| {
-                            ("margin-top: 0.75rem; color: transparent;".to_string(), String::new())
-                        });
-                    view! { <p style=style>{message}</p> }
+                    if let Some((success, message)) = turn_off_feedback.get() {
+                        let class = if success {
+                            "feedback feedback--success"
+                        } else {
+                            "feedback feedback--danger"
+                        }
+                        .to_string();
+                        view! { <p class=class>{message}</p> }
+                    } else {
+                        let class = "feedback feedback--hidden".to_string();
+                        let empty = String::new();
+                        view! { <p class=class>{empty}</p> }
+                    }
                 }}
-                <Show when=move || !can_turn_off_machine.get() fallback=|| view! { <></> }>
-                    <p style="margin-top: 0.75rem; color: #6b7280;">
-                        Configure a turn-off port and enable remote turn-off to activate this action.
-                    </p>
+                <Show
+                    when=move || !can_turn_off_machine.get()
+                    fallback=|| view! { <></> }
+                >
+                    <p class="field-help">"Configure a remote shutdown port on the machine to activate this action."</p>
                 </Show>
             </div>
 
-            <div style="margin-top: 1rem;">
-                <h3>Raw Machine Data</h3>
-                <pre class="machine-json">
+            <div class="card">
+                <header class="card-header">
+                    <h3 class="card-title">"Raw machine data"</h3>
+                    <p class="card-subtitle">"Debug snapshot of the API payload."</p>
+                </header>
+                <pre class="code-block">
                     {move || {
                         serde_json::to_string_pretty(&machine_details.get()).unwrap_or_default()
                     }}
@@ -610,6 +597,7 @@ fn MachineDetailPage() -> impl IntoView {
             </div>
         </div>
     }
+
 }
 
 #[component]
@@ -700,100 +688,101 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
     }
 
     view! {
-        <div class="">
-            <div>
-                <h1 class="">Wakezilla Manager</h1>
-                <p class="">Wake, manage, and forward to your registered machines.</p>
-            </div>
-            <form
-                on:submit=on_submit
-                class=""
-                style="margin-top: 1rem; margin-bottom: 1rem; display: flex; gap: 0.5rem; align-items: center;"
-            >
-                <select
-                    id="interface-select"
-                    class=""
-                    on:change:target=move |ev| {
-                        handle_interface_change(ev.target().value(), set_interface);
-                    }
-                    prop:value=move || interface.get().to_string()
-                >
-                    <option value="">Auto-detect interface</option>
-                    {move || {
-                        interfaces
-                            .get()
-                            .iter()
-                            .map(|iface| {
-                                view! {
-                                    <option value=iface
-                                        .name
-                                        .clone()>
-                                        {format!("{} - {} ({})", iface.name, iface.ip, iface.mac)}
-                                    </option>
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    }}
-                </select>
-                <button id="scan-btn" class="" disabled=move || loading.get()>
-                    {move || {
-                        if loading.get() { "🔍 Scanning  ...." } else { "🔍 Scan Network" }
-                    }}
-                </button>
-            </form>
-
-        </div>
-        <Show when=move || { !discovered_devices.get().is_empty() } fallback=|| view! { "" }>
-
-            <section id="scan-results-container">
-                <div class="">
-                    <h3 style="eargin-top: 1rem; margin-bottom: 1rem;">Discovered Devices</h3>
-                    <span id="scan-status" class="" aria-live="polite"></span>
-                </div>
-                <div class="">
-                    <table id="scan-results-table" style="width: 100%;">
-                        <thead class="">
-                            <tr>
-                                <th class="">IP Address</th>
-                                <th class="">Hostname</th>
-                                <th class="">MAC Address</th>
-                                <th class="">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="">
-                            <For
-                                each=move || discovered_devices.get()
-                                key=|device| device.ip.clone()
-                                children=move |device| {
+        <div class="section-stack">
+            <div class="card scan-card">
+                <header class="card-header">
+                    <h1 class="card-title">"Wakezilla Manager"</h1>
+                    <p class="card-subtitle">"Wake, manage, and forward to your registered machines."</p>
+                </header>
+                <form on:submit=on_submit class="scan-grid">
+                    <select
+                        id="interface-select"
+                        class="input"
+                        on:change:target=move |ev| {
+                            handle_interface_change(ev.target().value(), set_interface);
+                        }
+                        prop:value=move || interface.get().to_string()
+                    >
+                        <option value="">"Auto-detect interface"</option>
+                        {move || {
+                            interfaces
+                                .get()
+                                .iter()
+                                .map(|iface| {
                                     view! {
-                                        <tr>
-                                            <td class="">{device.ip.clone()}</td>
-                                            <td class="">
-                                                {device
-                                                    .hostname
-                                                    .clone()
-                                                    .unwrap_or_else(|| "N/A".to_string())}
-                                            </td>
-                                            <td class="">{device.mac.clone()}</td>
-                                            <td class="px-4 py-3">
-                                                <button on:click=move |_| {
-                                                    handle_add_machine(
-                                                        device.clone(),
-                                                        set_machine.clone(),
-                                                        set_discovered_devices.clone(),
-                                                    );
-                                                }>{"＋"}</button>
-                                            </td>
-                                        </tr>
+                                        <option value=iface.name.clone()>
+                                            {format!("{} · {} ({})", iface.name, iface.ip, iface.mac)}
+                                            </option>
                                     }
-                                }
-                            />
-                        </tbody>
-                    </table>
+                                })
+                                .collect::<Vec<_>>()
+                        }}
+                    </select>
+                    <button id="scan-btn" class="btn btn-primary" disabled=move || loading.get()>
+                        {move || {
+                            if loading.get() {
+                                "Scanning…"
+                            } else {
+                                "Scan network"
+                            }
+                        }}
+                    </button>
+                </form>
+            </div>
+
+            <Show when=move || { !discovered_devices.get().is_empty() } fallback=|| view! { <></> }>
+                <div class="card table-card" id="scan-results-container">
+                    <div class="card-header">
+                        <h3 class="card-title">"Discovered devices"</h3>
+                        <p class="card-subtitle">"Tap a device to pre-fill the create form below."</p>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="scan-results-table">
+                            <thead>
+                                <tr>
+                                    <th>"IP address"</th>
+                                    <th>"Hostname"</th>
+                                    <th>"MAC address"</th>
+                                    <th>"Action"</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <For
+                                    each=move || discovered_devices.get()
+                                    key=|device| device.ip.clone()
+                                    children=move |device| {
+                                        view! {
+                                            <tr>
+                                                <td>{device.ip.clone()}</td>
+                                                <td>{device.hostname.clone().unwrap_or_else(|| "N/A".to_string())}</td>
+                                                <td>{device.mac.clone()}</td>
+                                                <td>
+                                                    <button
+                                                        class="btn-icon btn-icon--positive"
+                                                        title="Use this device"
+                                                        on:click=move |_| {
+                                                            handle_add_machine(
+                                                                device.clone(),
+                                                                set_machine.clone(),
+                                                                set_discovered_devices.clone(),
+                                                            );
+                                                        }
+                                                    >
+                                                        "＋"
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                />
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </section>
-        </Show>
+            </Show>
+        </div>
     }
+
 }
 
 #[component]
@@ -833,311 +822,260 @@ fn RegistredMachines(
     };
 
     view! {
-        <section class="" style="width: 100%; margin-top: 2rem;">
-            <div
-                class=""
-                style="width: 100%; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between;"
-            >
-                <h2 class="" style="font-size: 1.125rem; font-weight: 600;">
-                    Registered Machines
-                </h2>
+        <section class="card table-card">
+            <div class="card-header">
+                <div>
+                    <h2 class="card-title">"Registered machines"</h2>
+                    <p class="card-subtitle">
+                        {move || {
+                            let count = machines.get().len();
+                            if count == 0 {
+                                "No machines registered yet.".to_string()
+                            } else if count == 1 {
+                                "1 machine online or ready".to_string()
+                            } else {
+                                format!("{} machines online or ready", count)
+                            }
+                        }}
+                    </p>
+                </div>
             </div>
-            <div
-                class=""
-                style="width: 100%; overflow-x: auto; border-radius: 0.5rem; border: 1px solid #e5e7eb; background-color: white; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); display: block;"
-            >
-                <table
-                    class=""
-                    style="width: 100%; min-width: 100%; text-align: left; font-size: 0.875rem;"
-                >
-                    <thead class="" style="background-color: #f9fafb; color: #374151;">
+            <div class="table-container">
+                <table class="table">
+                    <thead>
                         <tr>
-                            <th
-                                class="px-4 py-3 font-semibold"
-                                style="padding: 0.75rem; font-weight: 600;"
-                            >
-                                Name
-                            </th>
-                            <th
-                                class="px-4 py-3 font-semibold"
-                                style="padding: 0.75rem; font-weight: 600;"
-                            >
-                                MAC Address
-                            </th>
-                            <th
-                                class="px-4 py-3 font-semibold"
-                                style="padding: 0.75rem; font-weight: 600;"
-                            >
-                                IP Address
-                            </th>
-                            <th
-                                class="px-4 py-3 font-semibold"
-                                style="padding: 0.75rem; font-weight: 600;"
-                            >
-                                Description
-                            </th>
-                            <th
-                                class="px-4 py-3 font-semibold"
-                                style="padding: 0.75rem; font-weight: 600;"
-                            >
-                                Status
-                            </th>
-                            <th
-                                class="px-4 py-3 font-semibold"
-                                style="padding: 0.75rem; font-weight: 600;"
-                            >
-                                Actions
-                            </th>
+                            <th>"Name"</th>
+                            <th>"MAC"</th>
+                            <th>"IP"</th>
+                            <th>"Description"</th>
+                            <th>"Status"</th>
+                            <th>"Actions"</th>
                         </tr>
                     </thead>
-                    <tbody class="" style="border-top: 1px solid #e5e7eb;">
-                        {move || {
-                            machines
-                                .get()
-                                .iter()
-                                .map(|m| {
-                                    let machine = m.clone();
-                                    let machine_mac_for_turn_off = machine.mac.clone();
-                                    let machine_mac_for_disable = machine_mac_for_turn_off.clone();
-                                    let machine_mac_for_label = machine_mac_for_turn_off.clone();
-                                    let machine_name_for_alert = machine.name.clone();
-                                    let wake_mac_base = machine.mac.clone();
-                                    let wake_mac_for_disable = wake_mac_base.clone();
-                                    let wake_mac_for_label = wake_mac_base.clone();
-                                    let wake_mac_for_click_check = wake_mac_base.clone();
-                                    let machine_name_for_wake = machine.name.clone();
+                    <tbody>
+                        <Show
+                            when=move || !machines.get().is_empty()
+                            fallback=|| {
+                                view! { <tr><td colspan=6 class="table-empty">"No machines yet. Use the form below to add one."</td></tr> }
+                            }
+                        >
+                            <For
+                                each=move || machines.get()
+                                key=|machine| machine.mac.clone()
+                                children=move |machine| {
+                                    let mac_href = machine.mac.clone();
+                                    let mac_display = mac_href.clone();
+                                    let ip_display = machine.ip.clone();
+                                    let description_display =
+                                        machine.description.clone().unwrap_or_else(|| "-".to_string());
+                                    let status_mac = mac_href.clone();
+
+                                    let wake_mac_disabled = mac_href.clone();
+                                    let wake_mac_click = mac_href.clone();
+                                    let wake_mac_task = mac_href.clone();
+
+                                    let turn_off_mac_disabled = mac_href.clone();
+                                    let turn_off_mac_click = mac_href.clone();
+                                    let turn_off_mac_task = mac_href.clone();
+                                    let turn_off_mac_label = mac_href.clone();
+
+                                    let delete_mac = mac_href.clone();
+
+                                    let name_link = machine.name.clone();
+                                    let name_for_wake = machine.name.clone();
+                                    let name_for_turnoff = machine.name.clone();
+                                    let name_for_confirm = machine.name.clone();
+
                                     let set_wake_in_progress_btn = set_wake_in_progress.clone();
                                     let wake_in_progress_for_disable = wake_in_progress.clone();
-                                    let wake_in_progress_for_label = wake_in_progress.clone();
                                     let wake_in_progress_for_click = wake_in_progress.clone();
-                                    let can_turn_off_machine = machine.can_be_turned_off
-                                        && machine.turn_off_port.is_some();
-                                    let set_turn_off_in_progress_btn = set_turn_off_in_progress
-                                        .clone();
-                                    let turn_off_in_progress_for_disable = turn_off_in_progress
-                                        .clone();
-                                    let turn_off_in_progress_for_label = turn_off_in_progress
-                                        .clone();
-                                    let turn_off_in_progress_for_click = turn_off_in_progress
-                                        .clone();
-                                    // Clone the machine for the closure
+
+                                    let set_turn_off_in_progress_btn = set_turn_off_in_progress.clone();
+                                    let turn_off_in_progress_for_disable = turn_off_in_progress.clone();
+                                    let turn_off_in_progress_for_click = turn_off_in_progress.clone();
+                                    let turn_off_in_progress_for_label = turn_off_in_progress.clone();
+
+                                    let can_turn_off_machine =
+                                        machine.can_be_turned_off && machine.turn_off_port.is_some();
+
                                     view! {
-                                        <tr
-                                            class=""
-                                            style="vertical-align: middle; border-bottom: 1px solid #e5e7eb;"
-                                        >
-                                            <td class="" style="padding: 0.75rem; font-size: 0.75rem;">
-                                                <a
-                                                    class=""
-                                                    href=format!("/machines/{}", machine.mac)
-                                                    style="text-decoration: underline; color: #2563eb; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-                                                >
-                                                    {machine.name.clone()}
+                                        <tr>
+                                            <td>
+                                                <a class="text-link" href=format!("/machines/{}", mac_href.clone())>
+                                                    {name_link}
                                                 </a>
                                             </td>
-                                            <td
-                                                class=""
-                                                style="padding: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
-                                            >
-                                                {machine.mac.clone()}
-                                            </td>
-                                            <td
-                                                class=""
-                                                style="padding: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
-                                            >
-                                                {machine.ip.clone()}
-                                            </td>
-                                            <td class="" style="padding: 0.75rem;">
-                                                <span class="" style="font-size: 0.75rem;">
-                                                    {machine
-                                                        .description
-                                                        .clone()
-                                                        .unwrap_or_else(|| "-".to_string())}
-                                                </span>
-                                            </td>
-                                            <td class="" style="padding: 0.75rem;">
-                                                <span
-                                                    class=""
-                                                    style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem;"
-                                                >
-                                                    {status_machine
+                                            <td><code>{mac_display.clone()}</code></td>
+                                            <td><code>{ip_display.clone()}</code></td>
+                                            <td>{description_display.clone()}</td>
+                                            <td>
+                                                {move || {
+                                                    let key = status_mac.clone();
+                                                    let is_online = status_machine
                                                         .get()
-                                                        .get(&machine.mac)
+                                                        .get(&key)
                                                         .cloned()
-                                                        .unwrap_or(false)
-                                                        .then(|| {
-                                                            view! { <span style="color: green;">"Online"</span> }
-                                                        })
-                                                        .unwrap_or_else(|| {
-                                                            view! { <span style="color: red;">"Offline"</span> }
-                                                        })}
-                                                </span>
+                                                        .unwrap_or(false);
+                                                    if is_online {
+                                                        view! { <span class="status-pill status-pill--online">"Online"</span> }
+                                                    } else {
+                                                        view! { <span class="status-pill status-pill--offline">"Offline"</span> }
+                                                    }
+                                                }}
                                             </td>
-                                            <td class="" style="padding: 0.75rem;">
+                                            <td class="table-actions">
                                                 <button
+                                                    class="btn-icon btn-icon--positive"
+                                                    title="Wake machine"
+                                                    disabled=move || {
+                                                        wake_in_progress_for_disable
+                                                            .get()
+                                                            .as_ref()
+                                                            .map(|current| current == &wake_mac_disabled)
+                                                            .unwrap_or(false)
+                                                    }
                                                     on:click=move |_| {
-                                                        if wake_in_progress_for_click.get().as_ref()
-                                                            == Some(&wake_mac_for_click_check)
+                                                        if wake_in_progress_for_click
+                                                            .get()
+                                                            .as_ref()
+                                                            .map(|current| current == &wake_mac_click)
+                                                            .unwrap_or(false)
                                                         {
                                                             return;
                                                         }
-                                                        set_wake_in_progress_btn.set(Some(wake_mac_base.clone()));
+                                                        set_wake_in_progress_btn.set(Some(wake_mac_task.clone()));
                                                         let set_wake_after = set_wake_in_progress_btn.clone();
-                                                        let mac_for_request = wake_mac_base.clone();
-                                                        let name_for_alert = machine_name_for_wake.clone();
+                                                        let mac_for_request = wake_mac_task.clone();
+                                                        let name_for_alert = name_for_wake.clone();
                                                         leptos::task::spawn_local(async move {
                                                             match wake_machine(&mac_for_request).await {
                                                                 Ok(message) => {
                                                                     if let Some(win) = window() {
                                                                         let _ = win.alert_with_message(&message);
                                                                     }
-                                                                    console_log(
-                                                                        &format!(
-                                                                            "Wake request sent for {} ({})",
-                                                                            name_for_alert,
-                                                                            mac_for_request,
-                                                                        ),
-                                                                    );
+                                                                    console_log(&format!(
+                                                                        "Wake request sent for {} ({})",
+                                                                        name_for_alert, mac_for_request
+                                                                    ));
                                                                 }
                                                                 Err(err) => {
                                                                     if let Some(win) = window() {
-                                                                        let _ = win
-                                                                            .alert_with_message(
-                                                                                &format!("Failed to wake machine: {}", err),
-                                                                            );
+                                                                        let _ = win.alert_with_message(&format!(
+                                                                            "Failed to wake machine: {}",
+                                                                            err
+                                                                        ));
                                                                     }
-                                                                    console_log(
-                                                                        &format!(
-                                                                            "Failed to wake {} ({}): {}",
-                                                                            name_for_alert,
-                                                                            mac_for_request,
-                                                                            err,
-                                                                        ),
-                                                                    );
+                                                                    console_log(&format!(
+                                                                        "Failed to wake {} ({}): {}",
+                                                                        name_for_alert, mac_for_request, err
+                                                                    ));
                                                                 }
                                                             }
                                                             set_wake_after.set(None);
                                                         });
                                                     }
-                                                    style="color: #16a34a; background: none; border: none; cursor: pointer; font-size: 1rem; margin-right: 0.5rem;"
-                                                    disabled=move || {
-                                                        wake_in_progress_for_disable.get().as_ref()
-                                                            == Some(&wake_mac_for_disable)
-                                                    }
-                                                >
-                                                    {move || {
-                                                        if wake_in_progress_for_label.get().as_ref()
-                                                            == Some(&wake_mac_for_label)
-                                                        {
-                                                            "⏳".to_string()
-                                                        } else {
-                                                            "⚡".to_string()
-                                                        }
-                                                    }}
-                                                </button>
+                                                >"⚡"</button>
                                                 <button
+                                                    class="btn-icon"
+                                                    title="Turn off machine"
+                                                    disabled=move || {
+                                                        !can_turn_off_machine
+                                                            || turn_off_in_progress_for_disable
+                                                                .get()
+                                                                .as_ref()
+                                                                .map(|current| current == &turn_off_mac_disabled)
+                                                                .unwrap_or(false)
+                                                    }
                                                     on:click=move |_| {
                                                         if !can_turn_off_machine {
                                                             if let Some(win) = window() {
-                                                                let _ = win
-                                                                    .alert_with_message(
-                                                                        "Enable remote turn-off with a valid port before triggering this action.",
-                                                                    );
+                                                                let _ = win.alert_with_message(
+                                                                    "Enable remote turn-off with a valid port before triggering this action."
+                                                                );
                                                             }
                                                             return;
                                                         }
-                                                        if turn_off_in_progress_for_click.get().as_ref()
-                                                            == Some(&machine_mac_for_turn_off)
+                                                        if turn_off_in_progress_for_click
+                                                            .get()
+                                                            .as_ref()
+                                                            .map(|current| current == &turn_off_mac_click)
+                                                            .unwrap_or(false)
                                                         {
                                                             return;
                                                         }
-                                                        set_turn_off_in_progress_btn
-                                                            .set(Some(machine_mac_for_turn_off.clone()));
-                                                        let set_turn_off_after = set_turn_off_in_progress_btn
-                                                            .clone();
-                                                        let mac_for_request = machine_mac_for_turn_off.clone();
-                                                        let name_for_alert = machine_name_for_alert.clone();
+                                                        set_turn_off_in_progress_btn.set(Some(turn_off_mac_task.clone()));
+                                                        let set_turn_off_after = set_turn_off_in_progress_btn.clone();
+                                                        let mac_for_request = turn_off_mac_task.clone();
+                                                        let name_for_alert = name_for_turnoff.clone();
                                                         leptos::task::spawn_local(async move {
                                                             match turn_off_machine(&mac_for_request).await {
                                                                 Ok(message) => {
                                                                     if let Some(win) = window() {
                                                                         let _ = win.alert_with_message(&message);
                                                                     }
-                                                                    console_log(
-                                                                        &format!(
-                                                                            "Turn-off request sent for {} ({})",
-                                                                            name_for_alert,
-                                                                            mac_for_request,
-                                                                        ),
-                                                                    );
+                                                                    console_log(&format!(
+                                                                        "Turn-off request sent for {} ({})",
+                                                                        name_for_alert, mac_for_request
+                                                                    ));
                                                                 }
                                                                 Err(err) => {
                                                                     if let Some(win) = window() {
-                                                                        let _ = win
-                                                                            .alert_with_message(
-                                                                                &format!("Failed to turn off machine: {}", err),
-                                                                            );
+                                                                        let _ = win.alert_with_message(&format!(
+                                                                            "Failed to turn off machine: {}",
+                                                                            err
+                                                                        ));
                                                                     }
-                                                                    console_log(
-                                                                        &format!(
-                                                                            "Failed to turn off {} ({}): {}",
-                                                                            name_for_alert,
-                                                                            mac_for_request,
-                                                                            err,
-                                                                        ),
-                                                                    );
+                                                                    console_log(&format!(
+                                                                        "Failed to turn off {} ({}): {}",
+                                                                        name_for_alert, mac_for_request, err
+                                                                    ));
                                                                 }
                                                             }
                                                             set_turn_off_after.set(None);
                                                         });
                                                     }
-                                                    style="color: #dc2626; background: none; border: none; cursor: pointer; font-size: 1rem; margin-right: 0.5rem;"
-                                                    disabled=move || {
-                                                        !can_turn_off_machine
-                                                            || turn_off_in_progress_for_disable.get().as_ref()
-                                                                == Some(&machine_mac_for_disable)
-                                                    }
                                                 >
                                                     {move || {
-                                                        if turn_off_in_progress_for_label.get().as_ref()
-                                                            == Some(&machine_mac_for_label)
+                                                        if turn_off_in_progress_for_label
+                                                            .get()
+                                                            .as_ref()
+                                                            .map(|current| current == &turn_off_mac_label)
+                                                            .unwrap_or(false)
                                                         {
-                                                            "⏳".to_string()
+                                                            "⏳"
                                                         } else {
-                                                            "⏻".to_string()
+                                                            "⏻"
                                                         }
                                                     }}
                                                 </button>
                                                 <button
+                                                    class="btn-icon btn-icon--danger"
+                                                    title="Delete machine"
                                                     on:click=move |_| {
                                                         if window()
                                                             .unwrap()
-                                                            .confirm_with_message(
-                                                                &format!(
-                                                                    "Are you sure you want to delete machine {}?",
-                                                                    machine.name,
-                                                                ),
-                                                            )
+                                                            .confirm_with_message(&format!(
+                                                                "Are you sure you want to delete machine {}?",
+                                                                name_for_confirm.clone(),
+                                                            ))
                                                             .unwrap_or(false)
                                                         {
-                                                            on_delete(machine.mac.clone());
+                                                            on_delete(delete_mac.clone());
                                                         }
                                                     }
-                                                    style="color: #dc2626; background: none; border: none; cursor: pointer; font-size: 1rem;"
-                                                >
-                                                    "🗑️"
-                                                </button>
+                                                >"🗑"</button>
                                             </td>
                                         </tr>
                                     }
-                                })
-                                .collect::<Vec<_>>()
-                        }}
+                                }
+                            />
+                        </Show>
                     </tbody>
                 </table>
             </div>
         </section>
     }
+
 }
 
 #[component]
@@ -1226,22 +1164,30 @@ fn AddMachine(
     };
 
     view! {
-        <section style="margin-top: 2rem; margin-bottom: 2rem;">
-            <div class="">
-                <h3 class="">Add New Machine {move || machine_form_data.get().ip}</h3>
-            </div>
-            <form on:submit=on_submit class="">
-                <div>
-                    <div class="form-fields">
-                        <label for="name" class="">
-                            "Name"
-                        </label>
+        <section class="card">
+            <header class="card-header">
+                <h3 class="card-title">"Add new machine"</h3>
+                <p class="card-subtitle">
+                    {move || {
+                        let ip_hint = machine_form_data.get().ip;
+                        if ip_hint.is_empty() {
+                            "Register a device to make it available for wake and forwarding.".to_string()
+                        } else {
+                            format!("Pre-filled from discovery: {}", ip_hint)
+                        }
+                    }}
+                </p>
+            </header>
+            <form on:submit=on_submit class="form-grid">
+                <div class="form-grid two-column">
+                    <div class="field">
+                        <label for="name">"Name"</label>
                         <input
                             type="text"
                             id="name"
                             name="name"
+                            class="input"
                             required
-                            class=""
                             on:input:target=move |ev| {
                                 let input_value = ev.target().value();
                                 set_input_value(
@@ -1253,21 +1199,16 @@ fn AddMachine(
                             }
                             prop:value=move || machine_form_data.get().name
                         />
+                        <ErrorDisplay erros=erros key="name" />
                     </div>
-
-                    <ErrorDisplay erros=erros key="name" />
-                </div>
-                <div>
-                    <div class="form-fields">
-                        <label for="mac" class="">
-                            "MAC Address"
-                        </label>
+                    <div class="field">
+                        <label for="mac">"MAC address"</label>
                         <input
                             type="text"
                             id="mac"
                             name="mac"
+                            class="input"
                             required
-                            class=""
                             on:input:target=move |ev| {
                                 let input_value = ev.target().value();
                                 set_input_value(
@@ -1279,16 +1220,18 @@ fn AddMachine(
                             }
                             prop:value=move || machine_form_data.get().mac
                         />
-
+                        <ErrorDisplay erros=erros key="mac" />
                     </div>
-                    <ErrorDisplay erros=erros key="mac" />
                 </div>
-                <div>
-                    <div class="form-fields">
-                        <label for="ip" class="">
-                            "IP Address"
-                        </label>
+
+                <div class="form-grid two-column">
+                    <div class="field">
+                        <label for="ip">"IP address"</label>
                         <input
+                            type="text"
+                            id="ip"
+                            name="ip"
+                            class="input"
                             required
                             on:input:target=move |ev| {
                                 let input_value = ev.target().value();
@@ -1300,48 +1243,18 @@ fn AddMachine(
                                 );
                             }
                             prop:value=move || machine_form_data.get().ip
-                            type="text"
-                            id="ip"
-                            name="ip"
-                            class=""
                         />
-
+                        <ErrorDisplay erros=erros key="ip" />
                     </div>
-                    <ErrorDisplay erros=erros key="ip" />
-                </div>
-                <div>
-                    <div class="form-fields">
-                        <label for="description" class="">
-                            "Description (optional)"
-                        </label>
-                        <input
-                            id="description"
-                            on:input:target=move |ev| {
-                                let input_value = ev.target().value();
-                                set_input_value(
-                                    "description",
-                                    input_value,
-                                    set_machine_form_data.clone(),
-                                    machine_form_data.clone(),
-                                );
-                            }
-
-                            prop:value=move || {
-                                machine_form_data.get().description.clone().unwrap_or_default()
-                            }
-                            name="description"
-                            class=""
-                        />
-                    </div>
-                    <ErrorDisplay erros=erros key="description" />
-                </div>
-                <div>
-                    <div class="form-fields">
-                        <label for="turn_off_port" class="">
-                            "Turn Off Port (optional)"
-                        </label>
+                    <div class="field">
+                        <label for="turn_off_port">"Turn off port (optional)"</label>
                         <input
                             type="number"
+                            id="turn_off_port"
+                            name="turn_off_port"
+                            class="input"
+                            min="1"
+                            max="65535"
                             on:input:target=move |ev| {
                                 let input_value = ev.target().value();
                                 set_input_value(
@@ -1351,31 +1264,48 @@ fn AddMachine(
                                     machine_form_data.clone(),
                                 );
                             }
-
                             prop:value=move || {
                                 machine_form_data
                                     .get()
                                     .turn_off_port
-                                    .clone()
                                     .unwrap_or(3000)
                                     .to_string()
                             }
-                            id="turn_off_port"
-                            name="turn_off_port"
-                            class=""
                         />
                         <ErrorDisplay erros=erros key="turn_off_port" />
                     </div>
                 </div>
-                <div class="form-fields">
-                    <label for="can_be_turned_off" class="">
-                        "Can be turned off"
-                    </label>
+
+                <div class="field">
+                    <label for="description">"Description (optional)"</label>
+                    <input
+                        type="text"
+                        id="description"
+                        name="description"
+                        class="input"
+                        on:input:target=move |ev| {
+                            let input_value = ev.target().value();
+                            set_input_value(
+                                "description",
+                                input_value,
+                                set_machine_form_data.clone(),
+                                machine_form_data.clone(),
+                            );
+                        }
+                        prop:value=move || machine_form_data.get().description.clone().unwrap_or_default()
+                    />
+                    <ErrorDisplay erros=erros key="description" />
+                </div>
+
+                <div class="field field-toggle">
                     <input
                         type="checkbox"
+                        id="can_be_turned_off"
+                        name="can_be_turned_off"
+                        class="checkbox"
+                        prop:checked=move || machine_form_data.get().can_be_turned_off
                         on:input:target=move |ev| {
-                            let input_value = if ev.target().checked() { "on" } else { "off" }
-                                .to_string();
+                            let input_value = if ev.target().checked() { "on" } else { "off" }.to_string();
                             set_input_value(
                                 "can_be_turned_off",
                                 input_value,
@@ -1383,28 +1313,28 @@ fn AddMachine(
                                 machine_form_data.clone(),
                             );
                         }
-                        prop:checked=move || machine_form_data.get().can_be_turned_off
-                        id="can_be_turned_off"
-                        name="can_be_turned_off"
-                        class=""
                     />
+                    <div class="field-toggle__content">
+                        <label for="can_be_turned_off">"Allow remote turn off"</label>
+                        <p class="field-help">"Requires the machine to expose a shutdown endpoint."</p>
+                    </div>
                 </div>
-                <div style="font-size:21px; display: flex;justify-content: center;">
 
-                    <button
-                        type="submit"
-                        disabled=move || loading.get()
-                        class="submit-button submit-button:hover"
-                    >
+                <div class="form-footer">
+                    <button type="submit" class="btn btn-primary" disabled=move || loading.get()>
                         {move || {
-                            if loading.get() { "Adding Machine..." } else { "Add Machine" }
+                            if loading.get() {
+                                "Adding machine…"
+                            } else {
+                                "Add machine"
+                            }
                         }}
-
                     </button>
                 </div>
             </form>
         </section>
     }
+
 }
 #[component]
 fn HomePage() -> impl IntoView {

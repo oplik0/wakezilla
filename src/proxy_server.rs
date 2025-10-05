@@ -934,9 +934,12 @@ mod tests {
         let body_bytes = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("body to be readable");
-        let json: serde_json::Value = serde_json::from_slice(&body_bytes)
-            .expect("response to be valid json");
-        assert!(json["message"].as_str().unwrap_or_default().contains("Invalid MAC"));
+        let json: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("response to be valid json");
+        assert!(json["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Invalid MAC"));
     }
 
     #[tokio::test]
