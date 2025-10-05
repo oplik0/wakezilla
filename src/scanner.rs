@@ -50,14 +50,12 @@ pub async fn scan_network() -> Result<Vec<DiscoveredDevice>> {
         })
         .or_else(|| {
             // Fallback to any suitable interface if no preferred one found
-            datalink::interfaces()
-                .into_iter()
-                .find(|iface| {
-                    iface.is_up()
-                        && !iface.is_loopback()
-                        && iface.mac.is_some()
-                        && iface.ips.iter().any(|ip| ip.is_ipv4())
-                })
+            datalink::interfaces().into_iter().find(|iface| {
+                iface.is_up()
+                    && !iface.is_loopback()
+                    && iface.mac.is_some()
+                    && iface.ips.iter().any(|ip| ip.is_ipv4())
+            })
         })
         .ok_or_else(|| anyhow::anyhow!("No suitable network interface found for scanning."))?;
 
@@ -237,13 +235,15 @@ pub async fn list_interfaces() -> Result<Vec<NetworkInterface>> {
                 && iface.ips.iter().any(|ip| ip.is_ipv4())
         })
         .map(|iface| {
-            let ip = iface.ips
+            let ip = iface
+                .ips
                 .iter()
                 .find(|ip| ip.is_ipv4())
                 .map(|ip| ip.ip().to_string())
                 .unwrap_or_else(|| "No IPv4".to_string());
 
-            let mac = iface.mac
+            let mac = iface
+                .mac
                 .map(|mac| mac.to_string().to_uppercase())
                 .unwrap_or_else(|| "No MAC".to_string());
 
@@ -262,7 +262,9 @@ pub async fn list_interfaces() -> Result<Vec<NetworkInterface>> {
     Ok(interfaces)
 }
 
-pub async fn scan_network_with_interface(interface_name: Option<&str>) -> Result<Vec<DiscoveredDevice>> {
+pub async fn scan_network_with_interface(
+    interface_name: Option<&str>,
+) -> Result<Vec<DiscoveredDevice>> {
     info!("Starting network scan on interface: {:?}", interface_name);
 
     let pnet_iface = if let Some(name) = interface_name {
@@ -301,14 +303,12 @@ pub async fn scan_network_with_interface(interface_name: Option<&str>) -> Result
             })
             .or_else(|| {
                 // Fallback to any suitable interface if no preferred one found
-                datalink::interfaces()
-                    .into_iter()
-                    .find(|iface| {
-                        iface.is_up()
-                            && !iface.is_loopback()
-                            && iface.mac.is_some()
-                            && iface.ips.iter().any(|ip| ip.is_ipv4())
-                    })
+                datalink::interfaces().into_iter().find(|iface| {
+                    iface.is_up()
+                        && !iface.is_loopback()
+                        && iface.mac.is_some()
+                        && iface.ips.iter().any(|ip| ip.is_ipv4())
+                })
             })
             .ok_or_else(|| anyhow::anyhow!("No suitable network interface found for scanning."))?
     };
@@ -321,10 +321,16 @@ pub async fn scan_network_with_interface(interface_name: Option<&str>) -> Result
         bail!("Selected interface '{}' is loopback", pnet_iface.name);
     }
     if pnet_iface.mac.is_none() {
-        bail!("Selected interface '{}' has no MAC address", pnet_iface.name);
+        bail!(
+            "Selected interface '{}' has no MAC address",
+            pnet_iface.name
+        );
     }
     if !pnet_iface.ips.iter().any(|ip| ip.is_ipv4()) {
-        bail!("Selected interface '{}' has no IPv4 address", pnet_iface.name);
+        bail!(
+            "Selected interface '{}' has no IPv4 address",
+            pnet_iface.name
+        );
     }
 
     let ip_network = pnet_iface

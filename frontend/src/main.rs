@@ -332,7 +332,7 @@ fn MachineDetailPage() -> impl IntoView {
                         fallback=|| view! { <></> }
                     >
                         <div class="field">
-                            <label for="turn_off_port">"Turn off port"</label>
+                            <label for="turn_off_port">"Turn off port (optional)"</label>
                             <input
                                 type="number"
                                 id="turn_off_port"
@@ -387,14 +387,23 @@ fn MachineDetailPage() -> impl IntoView {
                                     }
                                     key=|(idx, _)| *idx
                                     children=move |(idx, _port_forward)| {
+                                        let row_number = idx + 1;
+                                        let name_id = format!("pf-name-{}", row_number);
+                                        let local_id = format!("pf-local-{}", row_number);
+                                        let target_id = format!("pf-target-{}", row_number);
+
+                                        let name_label = format!("Service name {}", row_number);
+                                        let local_label = format!("Local port {}", row_number);
+                                        let target_label = format!("Forward to port {}", row_number);
+
                                         view! {
                                             <div class="port-forward-item">
                                                 <div class="field">
-                                                    <label class="sr-only">"Name"</label>
+                                                    <label for=name_id.clone()>{name_label.clone()}</label>
                                                     <input
-                                                        type="text"
-                                                        placeholder="Name"
                                                         class="input"
+                                                        id=name_id
+                                                        placeholder="Service name"
                                                         value=move || {
                                                             port_forwards
                                                                 .get()
@@ -416,11 +425,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                     />
                                                 </div>
                                                 <div class="field">
-                                                    <label class="sr-only">"Local port"</label>
+                                                    <label for=local_id.clone()>{local_label.clone()}</label>
                                                     <input
-                                                        type="number"
-                                                        placeholder="Local port"
                                                         class="input"
+                                                        id=local_id
+                                                        placeholder="Local port"
+                                                        type="number"
                                                         min="0"
                                                         max="65535"
                                                         value=move || {
@@ -444,11 +454,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                     />
                                                 </div>
                                                 <div class="field">
-                                                    <label class="sr-only">"Target port"</label>
+                                                    <label for=target_id.clone()>{target_label.clone()}</label>
                                                     <input
-                                                        type="number"
-                                                        placeholder="Target port"
                                                         class="input"
+                                                        id=target_id
+                                                        placeholder="Target port"
+                                                        type="number"
                                                         min="0"
                                                         max="65535"
                                                         value=move || {
@@ -1085,10 +1096,13 @@ fn AddMachine(
     set_registred_machines: WriteSignal<Vec<Machine>>,
 ) -> impl IntoView {
     let (machine_form_data, set_machine_form_data) = signal::<Machine>(machine.get());
+    let (show_turn_off_port, set_show_turn_off_port) = signal(false);
     let (erros, set_errors) = signal::<HashMap<String, Vec<String>>>(HashMap::new());
     let (loading, set_loading) = signal(false);
     Effect::new(move |_| {
-        set_machine_form_data.set(machine.get());
+        let current = machine.get();
+        set_show_turn_off_port.set(current.can_be_turned_off);
+        set_machine_form_data.set(current);
     });
 
     fn set_input_value(
@@ -1096,8 +1110,8 @@ fn AddMachine(
         value: String,
         set_machine_form_data: WriteSignal<Machine>,
         machine_form_data: ReadSignal<Machine>,
+        set_show_turn_off_port: WriteSignal<bool>,
     ) {
-        //console_log(&format!("Setting {} to {}", key, value));
         let mut current = machine_form_data.get();
         match key {
             "name" => current.name = value,
@@ -1105,10 +1119,16 @@ fn AddMachine(
             "ip" => current.ip = value,
             "description" => current.description = Some(value),
             "turn_off_port" => {
-                current.turn_off_port = value.parse().ok();
+                let trimmed = value.trim();
+                current.turn_off_port = if trimmed.is_empty() { None } else { trimmed.parse().ok() };
             }
             "can_be_turned_off" => {
-                current.can_be_turned_off = value == "on";
+                let enabled = value == "on";
+                current.can_be_turned_off = enabled;
+                if !enabled {
+                    current.turn_off_port = None;
+                }
+                set_show_turn_off_port.set(enabled);
             }
             _ => {}
         };
@@ -1141,6 +1161,7 @@ fn AddMachine(
                             can_be_turned_off: false,
                             port_forwards: vec![],
                         });
+                        set_show_turn_off_port.set(false);
                         set_errors.set(HashMap::new());
                     } else {
                         console_log(&"Error creating machine".to_string());
@@ -1195,6 +1216,7 @@ fn AddMachine(
                                     input_value,
                                     set_machine_form_data.clone(),
                                     machine_form_data.clone(),
+                                    set_show_turn_off_port.clone(),
                                 );
                             }
                             prop:value=move || machine_form_data.get().name
@@ -1216,6 +1238,7 @@ fn AddMachine(
                                     input_value,
                                     set_machine_form_data.clone(),
                                     machine_form_data.clone(),
+                                    set_show_turn_off_port.clone(),
                                 );
                             }
                             prop:value=move || machine_form_data.get().mac
@@ -1240,39 +1263,12 @@ fn AddMachine(
                                     input_value,
                                     set_machine_form_data.clone(),
                                     machine_form_data.clone(),
+                                    set_show_turn_off_port.clone(),
                                 );
                             }
                             prop:value=move || machine_form_data.get().ip
                         />
                         <ErrorDisplay erros=erros key="ip" />
-                    </div>
-                    <div class="field">
-                        <label for="turn_off_port">"Turn off port (optional)"</label>
-                        <input
-                            type="number"
-                            id="turn_off_port"
-                            name="turn_off_port"
-                            class="input"
-                            min="1"
-                            max="65535"
-                            on:input:target=move |ev| {
-                                let input_value = ev.target().value();
-                                set_input_value(
-                                    "turn_off_port",
-                                    input_value,
-                                    set_machine_form_data.clone(),
-                                    machine_form_data.clone(),
-                                );
-                            }
-                            prop:value=move || {
-                                machine_form_data
-                                    .get()
-                                    .turn_off_port
-                                    .unwrap_or(3000)
-                                    .to_string()
-                            }
-                        />
-                        <ErrorDisplay erros=erros key="turn_off_port" />
                     </div>
                 </div>
 
@@ -1290,6 +1286,7 @@ fn AddMachine(
                                 input_value,
                                 set_machine_form_data.clone(),
                                 machine_form_data.clone(),
+                                set_show_turn_off_port.clone(),
                             );
                         }
                         prop:value=move || machine_form_data.get().description.clone().unwrap_or_default()
@@ -1311,6 +1308,7 @@ fn AddMachine(
                                 input_value,
                                 set_machine_form_data.clone(),
                                 machine_form_data.clone(),
+                                set_show_turn_off_port.clone(),
                             );
                         }
                     />
@@ -1319,6 +1317,45 @@ fn AddMachine(
                         <p class="field-help">"Requires the machine to expose a shutdown endpoint."</p>
                     </div>
                 </div>
+
+                <Show
+                    when=move || show_turn_off_port.get()
+                    fallback=|| view! { <></> }
+                >
+                    {move || {
+                        view! {
+                            <div class="field">
+                                <label for="turn_off_port">"Turn off port (optional)"</label>
+                                <input
+                                    type="number"
+                                    id="turn_off_port"
+                                    name="turn_off_port"
+                                    class="input"
+                                    min="1"
+                                    max="65535"
+                                    on:input:target=move |ev| {
+                                        let input_value = ev.target().value();
+                                        set_input_value(
+                                            "turn_off_port",
+                                            input_value,
+                                            set_machine_form_data.clone(),
+                                            machine_form_data.clone(),
+                                            set_show_turn_off_port.clone(),
+                                        );
+                                    }
+                                    prop:value=move || {
+                                        machine_form_data
+                                            .get()
+                                            .turn_off_port
+                                            .map(|port| port.to_string())
+                                            .unwrap_or_default()
+                                    }
+                                />
+                                <ErrorDisplay erros=erros key="turn_off_port" />
+                            </div>
+                        }
+                    }}
+                </Show>
 
                 <div class="form-footer">
                     <button type="submit" class="btn btn-primary" disabled=move || loading.get()>
