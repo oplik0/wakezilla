@@ -179,7 +179,9 @@ async fn add_machine_api(
         port_forwards: Vec::new(),
     };
     let mut machines = state.machines.write().await;
+    web::start_proxy_if_configured(&new_machine, &state);
     machines.push(new_machine);
+
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
         return (

@@ -764,10 +764,10 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                                     children=move |device| {
                                         view! {
                                             <tr>
-                                                <td>{device.ip.clone()}</td>
-                                                <td>{device.hostname.clone().unwrap_or_else(|| "N/A".to_string())}</td>
-                                                <td>{device.mac.clone()}</td>
-                                                <td>
+                                                <td attr:data-label="IP address">{device.ip.clone()}</td>
+                                                <td attr:data-label="Hostname">{device.hostname.clone().unwrap_or_else(|| "N/A".to_string())}</td>
+                                                <td attr:data-label="MAC address">{device.mac.clone()}</td>
+                                                <td attr:data-label="Action" class="table-actions">
                                                     <button
                                                         class="btn-icon btn-icon--positive"
                                                         title="Use this device"
@@ -911,15 +911,15 @@ fn RegistredMachines(
 
                                     view! {
                                         <tr>
-                                            <td>
+                                            <td attr:data-label="Name">
                                                 <a class="text-link" href=format!("/machines/{}", mac_href.clone())>
                                                     {name_link}
                                                 </a>
                                             </td>
-                                            <td><code>{mac_display.clone()}</code></td>
-                                            <td><code>{ip_display.clone()}</code></td>
-                                            <td>{description_display.clone()}</td>
-                                            <td>
+                                            <td attr:data-label="MAC"><code>{mac_display.clone()}</code></td>
+                                            <td attr:data-label="IP"><code>{ip_display.clone()}</code></td>
+                                            <td attr:data-label="Description">{description_display.clone()}</td>
+                                            <td attr:data-label="Status">
                                                 {move || {
                                                     let key = status_mac.clone();
                                                     let is_online = status_machine
@@ -934,7 +934,7 @@ fn RegistredMachines(
                                                     }
                                                 }}
                                             </td>
-                                            <td class="table-actions">
+                                            <td class="table-actions" attr:data-label="Actions">
                                                 <button
                                                     class="btn-icon btn-icon--positive"
                                                     title="Wake machine"
