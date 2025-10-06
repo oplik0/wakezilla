@@ -3,11 +3,30 @@ use crate::models::{DiscoveredDevice, Machine, NetworkInterface};
 use leptos::leptos_dom::logging::console_log;
 
 use gloo_net::http::Request;
+use wasm_bindgen::prelude::*;
+use web_sys::window;
+const DEFAULT_API_PORT: u16 = 3000;
 
-const API_BASE: &str = "http://localhost:3000/api";
+// Function to get the API base URL dynamically from the current window location
+fn get_api_base() -> String {
+    if let Some(window) = window() {
+        let location = window.location();
+        if let (Ok(protocol), Ok(hostname), Ok(_port)) =
+            (location.protocol(), location.hostname(), location.port())
+        {
+            format!("{}//{}:{}{}", protocol, hostname, DEFAULT_API_PORT, "/api")
+        } else {
+            // Fallback to default if location properties are not available
+            String::from("http://localhost:3000/api")
+        }
+    } else {
+        String::from("http://localhost:3000/api")
+    }
+}
 
 pub async fn create_machine(machine: Machine) -> Result<(), String> {
-    Request::post(&format!("{}/machines", API_BASE))
+    let api_base = get_api_base();
+    Request::post(&format!("{}/machines", api_base))
         .json(&machine)
         .map_err(|e| e.to_string())?
         .send()
@@ -17,7 +36,8 @@ pub async fn create_machine(machine: Machine) -> Result<(), String> {
     Ok(())
 }
 pub async fn get_details_machine(mac: &str) -> Result<Machine, String> {
-    Request::get(&format!("{}/machines/{}", API_BASE, mac))
+    let api_base = get_api_base();
+    Request::get(&format!("{}/machines/{}", api_base, mac))
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -27,7 +47,8 @@ pub async fn get_details_machine(mac: &str) -> Result<Machine, String> {
 }
 
 pub async fn update_machine(mac: &str, machine: &Machine) -> Result<(), String> {
-    Request::put(&format!("{}/machines/{}", API_BASE, mac))
+    let api_base = get_api_base();
+    Request::put(&format!("{}/machines/{}", api_base, mac))
         .json(machine)
         .map_err(|e| e.to_string())?
         .send()
@@ -38,8 +59,9 @@ pub async fn update_machine(mac: &str, machine: &Machine) -> Result<(), String> 
 }
 
 pub async fn delete_machine(mac: &str) -> Result<(), String> {
+    let api_base = get_api_base();
     let payload = serde_json::json!({ "mac": mac });
-    Request::delete(&format!("{}/machines/delete", API_BASE))
+    Request::delete(&format!("{}/machines/delete", api_base))
         .json(&payload)
         .map_err(|e| e.to_string())?
         .send()
@@ -49,7 +71,8 @@ pub async fn delete_machine(mac: &str) -> Result<(), String> {
 }
 
 pub async fn fetch_machines() -> Result<Vec<Machine>, String> {
-    Request::get(&format!("{}/machines", API_BASE))
+    let api_base = get_api_base();
+    Request::get(&format!("{}/machines", api_base))
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -59,7 +82,8 @@ pub async fn fetch_machines() -> Result<Vec<Machine>, String> {
 }
 
 pub async fn fetch_interfaces() -> Result<Vec<NetworkInterface>, String> {
-    Request::get(&format!("{}/interfaces", API_BASE))
+    let api_base = get_api_base();
+    Request::get(&format!("{}/interfaces", api_base))
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -69,10 +93,11 @@ pub async fn fetch_interfaces() -> Result<Vec<NetworkInterface>, String> {
 }
 
 pub async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>, String> {
+    let api_base = get_api_base();
     let url = if device.is_empty() {
-        format!("{}/scan", API_BASE)
+        format!("{}/scan", api_base)
     } else {
-        format!("{}/scan?interface={}", API_BASE, device)
+        format!("{}/scan?interface={}", api_base, device)
     };
     Request::get(&url)
         .send()
@@ -84,7 +109,8 @@ pub async fn fetch_scan_network(device: String) -> Result<Vec<DiscoveredDevice>,
 }
 
 pub async fn turn_off_machine(mac: &str) -> Result<String, String> {
-    let response = Request::post(&format!("{}/machines/{}/remote-turn-off", API_BASE, mac))
+    let api_base = get_api_base();
+    let response = Request::post(&format!("{}/machines/{}/remote-turn-off", api_base, mac))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -105,7 +131,8 @@ pub async fn turn_off_machine(mac: &str) -> Result<String, String> {
 }
 
 pub async fn wake_machine(mac: &str) -> Result<String, String> {
-    let response = Request::post(&format!("{}/machines/{}/wake", API_BASE, mac))
+    let api_base = get_api_base();
+    let response = Request::post(&format!("{}/machines/{}/wake", api_base, mac))
         .send()
         .await
         .map_err(|e| e.to_string())?;
