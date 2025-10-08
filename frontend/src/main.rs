@@ -653,7 +653,10 @@ fn App() -> impl IntoView {
 }
 
 #[component]
-fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
+fn Header(
+    set_machine: WriteSignal<Machine>,
+    registred_machines: ReadSignal<Vec<Machine>>,
+) -> impl IntoView {
     let (discovered_devices, set_discovered_devices) = signal::<Vec<DiscoveredDevice>>(vec![]);
     let (interfaces, set_interfaces) = signal::<Vec<NetworkInterface>>(vec![]);
     let (interface, set_interface) = signal::<String>("".to_string());
@@ -686,12 +689,25 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                 .await
                 .map(|devices| {
                     console::log_1(&format!("Discovered devices: {:?}", devices).into());
+                    // does not diplay the machine if it's already registred
+                    let registred_machines = registred_machines.get();
+                    let devices: Vec<DiscoveredDevice> = devices
+                        .into_iter()
+                        .filter(|device| {
+                            !registred_machines
+                                .iter()
+                                .any(|machine| machine.mac == device.mac)
+                        })
+                        .collect();
+
                     set_discovered_devices.set(devices);
                 })
                 .unwrap_or_else(|err| {
                     window()
                         .unwrap()
-                        .alert_with_message(&"Error scanning network, check the logs in the backend".to_string())
+                        .alert_with_message(
+                            "Error scanning network, check the logs in the backend",
+                        )
                         .unwrap();
                     console::log_1(&format!("Error scanning network: {}", err).into());
                 });
@@ -1583,7 +1599,7 @@ fn HomePage() -> impl IntoView {
     });
 
     view! {
-        <Header set_machine=set_machine />
+        <Header set_machine=set_machine registred_machines=registred_machines />
         <Show when=move || { !registred_machines.get().is_empty() } fallback=|| view! {}>
             <RegistredMachines
                 machines=registred_machines
