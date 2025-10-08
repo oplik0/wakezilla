@@ -410,109 +410,115 @@ fn MachineDetailPage() -> impl IntoView {
                                             row_number,
                                         );
 
+                                        let forward_label = format!("Forward {}", row_number);
                                         view! {
                                             <div class="port-forward-item">
-                                                <div class="field">
-                                                    <label for=name_id.clone()>{name_label.clone()}</label>
-                                                    <input
-                                                        class="input"
-                                                        id=name_id
-                                                        placeholder="Service name"
-                                                        value=move || {
-                                                            port_forwards
-                                                                .get()
-                                                                .get(idx)
-                                                                .and_then(|pf| pf.name.clone())
-                                                                .unwrap_or_default()
-                                                        }
-                                                        on:input=move |ev| {
-                                                            let target = ev.target().unwrap();
-                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                            let value = input.value();
-                                                            let trimmed = value.trim().is_empty();
-                                                            set_port_forwards
-                                                                .update(|pfs| {
-                                                                    if let Some(pf) = pfs.get_mut(idx) {
-                                                                        pf.name = if trimmed { None } else { Some(value.clone()) };
-                                                                    }
-                                                                });
-                                                        }
-                                                    />
-                                                </div>
-                                                <div class="field">
-                                                    <label for=local_id.clone()>{local_label.clone()}</label>
-                                                    <input
-                                                        class="input"
-                                                        id=local_id
-                                                        placeholder="Local port"
-                                                        type="number"
-                                                        min="0"
-                                                        max="65535"
-                                                        value=move || {
-                                                            port_forwards
-                                                                .get()
-                                                                .get(idx)
-                                                                .map(|pf| pf.local_port.to_string())
-                                                                .unwrap_or_default()
-                                                        }
-                                                        on:input=move |ev| {
-                                                            let target = ev.target().unwrap();
-                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                            let value = input.value();
-                                                            let parsed = value.parse::<u16>().unwrap_or(0);
-                                                            set_port_forwards
-                                                                .update(|pfs| {
-                                                                    if let Some(pf) = pfs.get_mut(idx) {
-                                                                        pf.local_port = parsed;
-                                                                    }
-                                                                });
-                                                        }
-                                                    />
-                                                </div>
-                                                <div class="field">
-                                                    <label for=target_id.clone()>{target_label.clone()}</label>
-                                                    <input
-                                                        class="input"
-                                                        id=target_id
-                                                        placeholder="Target port"
-                                                        type="number"
-                                                        min="0"
-                                                        max="65535"
-                                                        value=move || {
-                                                            port_forwards
-                                                                .get()
-                                                                .get(idx)
-                                                                .map(|pf| pf.target_port.to_string())
-                                                                .unwrap_or_default()
-                                                        }
-                                                        on:input=move |ev| {
-                                                            let target = ev.target().unwrap();
-                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                            let value = input.value();
-                                                            let parsed = value.parse::<u16>().unwrap_or(0);
-                                                            set_port_forwards
-                                                                .update(|pfs| {
-                                                                    if let Some(pf) = pfs.get_mut(idx) {
-                                                                        pf.target_port = parsed;
-                                                                    }
-                                                                });
-                                                        }
-                                                    />
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-ghost"
-                                                    on:click=move |_| {
-                                                        set_port_forwards
-                                                            .update(|pfs| {
+                                                <div class="port-forward-item__header">
+                                                    <span class="port-forward-item__title">{forward_label}</span>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-ghost btn-sm port-forward-item__remove"
+                                                        on:click=move |_| {
+                                                            set_port_forwards.update(|pfs| {
                                                                 if idx < pfs.len() {
                                                                     pfs.remove(idx);
                                                                 }
                                                             });
-                                                    }
-                                                >
-                                                    "Remove"
-                                                </button>
+                                                        }
+                                                    >
+                                                        "Remove"
+                                                    </button>
+                                                </div>
+                                                <div class="port-forward-item__grid">
+                                                    <div class="field">
+                                                        <label for=name_id.clone()>{name_label.clone()}</label>
+                                                        <input
+                                                            class="input"
+                                                            id=name_id
+                                                            placeholder="Service name"
+                                                            value=move || {
+                                                                port_forwards
+                                                                    .get()
+                                                                    .get(idx)
+                                                                    .and_then(|pf| pf.name.clone())
+                                                                    .unwrap_or_default()
+                                                            }
+                                                            on:input=move |ev| {
+                                                                let target = ev.target().unwrap();
+                                                                let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                                let value = input.value();
+                                                                let trimmed = value.trim().is_empty();
+                                                                set_port_forwards.update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.name = if trimmed {
+                                                                            None
+                                                                        } else {
+                                                                            Some(value.clone())
+                                                                        };
+                                                                    }
+                                                                });
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label for=local_id.clone()>{local_label.clone()}</label>
+                                                        <input
+                                                            class="input"
+                                                            id=local_id
+                                                            placeholder="Local port"
+                                                            type="number"
+                                                            min="0"
+                                                            max="65535"
+                                                            value=move || {
+                                                                port_forwards
+                                                                    .get()
+                                                                    .get(idx)
+                                                                    .map(|pf| pf.local_port.to_string())
+                                                                    .unwrap_or_default()
+                                                            }
+                                                            on:input=move |ev| {
+                                                                let target = ev.target().unwrap();
+                                                                let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                                let value = input.value();
+                                                                let parsed = value.parse::<u16>().unwrap_or(0);
+                                                                set_port_forwards.update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.local_port = parsed;
+                                                                    }
+                                                                });
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label for=target_id.clone()>{target_label.clone()}</label>
+                                                        <input
+                                                            class="input"
+                                                            id=target_id
+                                                            placeholder="Target port"
+                                                            type="number"
+                                                            min="0"
+                                                            max="65535"
+                                                            value=move || {
+                                                                port_forwards
+                                                                    .get()
+                                                                    .get(idx)
+                                                                    .map(|pf| pf.target_port.to_string())
+                                                                    .unwrap_or_default()
+                                                            }
+                                                            on:input=move |ev| {
+                                                                let target = ev.target().unwrap();
+                                                                let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                                let value = input.value();
+                                                                let parsed = value.parse::<u16>().unwrap_or(0);
+                                                                set_port_forwards.update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.target_port = parsed;
+                                                                    }
+                                                                });
+                                                            }
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
                                         }
                                     }
@@ -1534,108 +1540,110 @@ fn AddMachine(
 
                                     view! {
                                         <div class="port-forward-item">
-                                            <div class="field">
-                                                <label for=name_id
-                                                    .clone()>{format!("Service name {}", row)}</label>
-                                                <input
-                                                    class="input"
-                                                    id=name_id
-                                                    placeholder="Service name"
-                                                    prop:value=move || {
-                                                        port_forwards
-                                                            .get()
-                                                            .get(idx)
-                                                            .and_then(|pf| pf.name.clone())
-                                                            .unwrap_or_default()
-                                                    }
-                                                    on:input=move |ev| {
-                                                        let target = ev.target().unwrap();
-                                                        let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                        let value = input.value();
-                                                        let trimmed = value.trim().is_empty();
-                                                        set_port_forwards
-                                                            .update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.name = if trimmed { None } else { Some(value.clone()) };
-                                                                }
-                                                            });
-                                                    }
-                                                />
-                                            </div>
-                                            <div class="field">
-                                                <label for=local_id
-                                                    .clone()>{format!("Local port {}", row)}</label>
-                                                <input
-                                                    class="input"
-                                                    id=local_id
-                                                    placeholder="Local port"
-                                                    type="number"
-                                                    min="1"
-                                                    max="65535"
-                                                    prop:value=move || {
-                                                        port_forwards
-                                                            .get()
-                                                            .get(idx)
-                                                            .map(|pf| pf.local_port.to_string())
-                                                            .unwrap_or_default()
-                                                    }
-                                                    on:input=move |ev| {
-                                                        let target = ev.target().unwrap();
-                                                        let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                        let parsed = input.value().parse::<u16>().unwrap_or(0);
-                                                        set_port_forwards
-                                                            .update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.local_port = parsed;
-                                                                }
-                                                            });
-                                                    }
-                                                />
-                                            </div>
-                                            <div class="field">
-                                                <label for=target_id
-                                                    .clone()>{format!("Target port {}", row)}</label>
-                                                <input
-                                                    class="input"
-                                                    id=target_id
-                                                    placeholder="Target port"
-                                                    type="number"
-                                                    min="1"
-                                                    max="65535"
-                                                    prop:value=move || {
-                                                        port_forwards
-                                                            .get()
-                                                            .get(idx)
-                                                            .map(|pf| pf.target_port.to_string())
-                                                            .unwrap_or_default()
-                                                    }
-                                                    on:input=move |ev| {
-                                                        let target = ev.target().unwrap();
-                                                        let input: HtmlInputElement = target.dyn_into().unwrap();
-                                                        let parsed = input.value().parse::<u16>().unwrap_or(0);
-                                                        set_port_forwards
-                                                            .update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.target_port = parsed;
-                                                                }
-                                                            });
-                                                    }
-                                                />
-                                            </div>
-                                            <button
-                                                type="button"
-                                                class="btn btn-ghost"
-                                                on:click=move |_| {
-                                                    set_port_forwards
-                                                        .update(|pfs| {
+                                            <div class="port-forward-item__header">
+                                                <span class="port-forward-item__title">{format!("Forward {}", row)}</span>
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-ghost btn-sm port-forward-item__remove"
+                                                    on:click=move |_| {
+                                                        set_port_forwards.update(|pfs| {
                                                             if idx < pfs.len() {
                                                                 pfs.remove(idx);
                                                             }
                                                         });
-                                                }
-                                            >
-                                                "Remove"
-                                            </button>
+                                                    }
+                                                >
+                                                    "Remove"
+                                                </button>
+                                            </div>
+                                            <div class="port-forward-item__grid">
+                                                <div class="field">
+                                                    <label for=name_id.clone()>{format!("Service name {}", row)}</label>
+                                                    <input
+                                                        class="input"
+                                                        id=name_id
+                                                        placeholder="Service name"
+                                                        prop:value=move || {
+                                                            port_forwards
+                                                                .get()
+                                                                .get(idx)
+                                                                .and_then(|pf| pf.name.clone())
+                                                                .unwrap_or_default()
+                                                        }
+                                                        on:input=move |ev| {
+                                                            let target = ev.target().unwrap();
+                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                            let value = input.value();
+                                                            let trimmed = value.trim().is_empty();
+                                                            set_port_forwards.update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.name = if trimmed {
+                                                                        None
+                                                                    } else {
+                                                                        Some(value.clone())
+                                                                    };
+                                                                }
+                                                            });
+                                                        }
+                                                    />
+                                                </div>
+                                                <div class="field">
+                                                    <label for=local_id.clone()>{format!("Local port {}", row)}</label>
+                                                    <input
+                                                        class="input"
+                                                        id=local_id
+                                                        placeholder="Local port"
+                                                        type="number"
+                                                        min="1"
+                                                        max="65535"
+                                                        prop:value=move || {
+                                                            port_forwards
+                                                                .get()
+                                                                .get(idx)
+                                                                .map(|pf| pf.local_port.to_string())
+                                                                .unwrap_or_default()
+                                                        }
+                                                        on:input=move |ev| {
+                                                            let target = ev.target().unwrap();
+                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                            let parsed = input.value().parse::<u16>().unwrap_or(0);
+                                                            set_port_forwards.update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.local_port = parsed;
+                                                                }
+                                                            });
+                                                        }
+                                                    />
+                                                </div>
+                                                <div class="field">
+                                                    <label for=target_id.clone()>{format!("Target port {}", row)}</label>
+                                                    <input
+                                                        class="input"
+                                                        id=target_id
+                                                        placeholder="Target port"
+                                                        type="number"
+                                                        min="1"
+                                                        max="65535"
+                                                        prop:value=move || {
+                                                            port_forwards
+                                                                .get()
+                                                                .get(idx)
+                                                                .map(|pf| pf.target_port.to_string())
+                                                                .unwrap_or_default()
+                                                        }
+                                                        on:input=move |ev| {
+                                                            let target = ev.target().unwrap();
+                                                            let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                            let parsed = input.value().parse::<u16>().unwrap_or(0);
+                                                            set_port_forwards.update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.target_port = parsed;
+                                                                }
+                                                            });
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     }
                                 }
