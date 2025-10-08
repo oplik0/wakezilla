@@ -49,14 +49,13 @@ impl validator::Validate for Machine {
         }
 
         // check if turn_off_port is Some and in range 1-65535
-        if let Some(port) = self.turn_off_port {
-            if 0 == port || port > 65535 {
+        if let Some(port) = self.turn_off_port
+            && (0 == port || port > 65535) {
                 errors.add(
                     "turn_off_port",
                     validator::ValidationError::new("Port must be between 1 and 65535"),
                 );
             }
-        }
 
         if self.mac.is_empty() {
             errors.add(

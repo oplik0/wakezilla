@@ -4,7 +4,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::env;
 use std::fs;
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -35,9 +37,12 @@ use crate::forward;
 const DEFAULT_DB_PATH: &str = "machines.json";
 
 fn machines_db_path() -> PathBuf {
+    let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+    let executable_dir = executable_path.parent().unwrap_or_else(|| Path::new("."));
+    let default_path = executable_dir.join(DEFAULT_DB_PATH);
     std::env::var("WAKEZILLA_MACHINES_DB_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_DB_PATH))
+        .unwrap_or_else(|_| PathBuf::from(default_path))
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -191,6 +196,7 @@ pub fn save_machines(machines: &[Machine]) -> Result<()> {
     let data =
         serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
     let path = machines_db_path();
+    info!("Saving machines database to {}", path.display());
     fs::write(&path, data)
         .with_context(|| format!("Failed to write machines database to {}", path.display()))
 }

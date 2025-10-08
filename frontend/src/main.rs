@@ -174,8 +174,8 @@ fn MachineDetailPage() -> impl IntoView {
         set_turn_off_loading.set(true);
         set_turn_off_feedback.set(None);
 
-        let set_turn_off_loading = set_turn_off_loading.clone();
-        let set_turn_off_feedback = set_turn_off_feedback.clone();
+        let set_turn_off_loading = set_turn_off_loading;
+        let set_turn_off_feedback = set_turn_off_feedback;
 
         leptos::task::spawn_local(async move {
             match turn_off_machine(&mac_address).await {
@@ -208,8 +208,8 @@ fn MachineDetailPage() -> impl IntoView {
         set_wake_loading.set(true);
         set_wake_feedback.set(None);
 
-        let set_wake_loading = set_wake_loading.clone();
-        let set_wake_feedback = set_wake_feedback.clone();
+        let set_wake_loading = set_wake_loading;
+        let set_wake_feedback = set_wake_feedback;
 
         leptos::task::spawn_local(async move {
             match wake_machine(&mac_address).await {
@@ -305,7 +305,9 @@ fn MachineDetailPage() -> impl IntoView {
                                 set_description.set(input.value());
                             }
                         />
-                        <p class="field-help">"Optional label to help the team recognise this machine."</p>
+                        <p class="field-help">
+                            "Optional label to help the team recognise this machine."
+                        </p>
                     </div>
 
                     <div class="field field-toggle">
@@ -323,14 +325,13 @@ fn MachineDetailPage() -> impl IntoView {
                         />
                         <div class="field-toggle__content">
                             <label for="can_be_turned_off">"Enable remote turn off"</label>
-                            <p class="field-help">"Requires an accessible shutdown endpoint on the machine."</p>
+                            <p class="field-help">
+                                "Requires an accessible shutdown endpoint on the machine."
+                            </p>
                         </div>
                     </div>
 
-                    <Show
-                        when=move || can_be_turned_off.get()
-                        fallback=|| view! { <></> }
-                    >
+                    <Show when=move || can_be_turned_off.get() fallback=|| view! { <></> }>
                         <div class="field">
                             <label for="turn_off_port">"Turn off port (optional)"</label>
                             <input
@@ -340,7 +341,9 @@ fn MachineDetailPage() -> impl IntoView {
                                 class="input"
                                 min="1"
                                 max="65535"
-                                value=move || turn_off_port.get().map(|p| p.to_string()).unwrap_or_default()
+                                value=move || {
+                                    turn_off_port.get().map(|p| p.to_string()).unwrap_or_default()
+                                }
                                 on:input=move |ev| {
                                     let target = ev.target().unwrap();
                                     let input: HtmlInputElement = target.dyn_into().unwrap();
@@ -348,7 +351,9 @@ fn MachineDetailPage() -> impl IntoView {
                                     set_turn_off_port.set(value.parse().ok());
                                 }
                             />
-                            <p class="field-help">"Port exposed by the machine to receive shutdown requests."</p>
+                            <p class="field-help">
+                                "Port exposed by the machine to receive shutdown requests."
+                            </p>
                         </div>
                     </Show>
 
@@ -359,22 +364,29 @@ fn MachineDetailPage() -> impl IntoView {
                                 type="button"
                                 class="btn btn-soft btn-sm"
                                 on:click=move |_| {
-                                    set_port_forwards.update(|pfs| {
-                                        pfs.push(PortForward {
-                                            name: None,
-                                            local_port: 0,
-                                            target_port: 0,
+                                    set_port_forwards
+                                        .update(|pfs| {
+                                            pfs.push(PortForward {
+                                                name: None,
+                                                local_port: 0,
+                                                target_port: 0,
+                                            });
                                         });
-                                    });
                                 }
                             >
                                 "+ Add port"
                             </button>
                         </div>
-                        <p class="field-help">"Start lightweight TCP tunnels when this machine is online."</p>
+                        <p class="field-help">
+                            "Start lightweight TCP tunnels when this machine is online."
+                        </p>
                         <Show
                             when=move || !port_forwards.get().is_empty()
-                            fallback=|| view! { <p class="field-empty">"No port forwards configured yet."</p> }
+                            fallback=|| {
+                                view! {
+                                    <p class="field-empty">"No port forwards configured yet."</p>
+                                }
+                            }
                         >
                             <div class="port-forward-list">
                                 <For
@@ -391,10 +403,12 @@ fn MachineDetailPage() -> impl IntoView {
                                         let name_id = format!("pf-name-{}", row_number);
                                         let local_id = format!("pf-local-{}", row_number);
                                         let target_id = format!("pf-target-{}", row_number);
-
                                         let name_label = format!("Service name {}", row_number);
                                         let local_label = format!("Local port {}", row_number);
-                                        let target_label = format!("Forward to port {}", row_number);
+                                        let target_label = format!(
+                                            "Forward to port {}",
+                                            row_number,
+                                        );
 
                                         view! {
                                             <div class="port-forward-item">
@@ -416,11 +430,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                             let input: HtmlInputElement = target.dyn_into().unwrap();
                                                             let value = input.value();
                                                             let trimmed = value.trim().is_empty();
-                                                            set_port_forwards.update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.name = if trimmed { None } else { Some(value.clone()) };
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.name = if trimmed { None } else { Some(value.clone()) };
+                                                                    }
+                                                                });
                                                         }
                                                     />
                                                 </div>
@@ -445,11 +460,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                             let input: HtmlInputElement = target.dyn_into().unwrap();
                                                             let value = input.value();
                                                             let parsed = value.parse::<u16>().unwrap_or(0);
-                                                            set_port_forwards.update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.local_port = parsed;
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.local_port = parsed;
+                                                                    }
+                                                                });
                                                         }
                                                     />
                                                 </div>
@@ -474,11 +490,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                             let input: HtmlInputElement = target.dyn_into().unwrap();
                                                             let value = input.value();
                                                             let parsed = value.parse::<u16>().unwrap_or(0);
-                                                            set_port_forwards.update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.target_port = parsed;
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.target_port = parsed;
+                                                                    }
+                                                                });
                                                         }
                                                     />
                                                 </div>
@@ -486,11 +503,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                     type="button"
                                                     class="btn btn-ghost"
                                                     on:click=move |_| {
-                                                        set_port_forwards.update(|pfs| {
-                                                            if idx < pfs.len() {
-                                                                pfs.remove(idx);
-                                                            }
-                                                        });
+                                                        set_port_forwards
+                                                            .update(|pfs| {
+                                                                if idx < pfs.len() {
+                                                                    pfs.remove(idx);
+                                                                }
+                                                            });
                                                     }
                                                 >
                                                     "Remove"
@@ -554,7 +572,13 @@ fn MachineDetailPage() -> impl IntoView {
                         on:click=trigger_turn_off
                         disabled=move || turn_off_loading.get() || !can_turn_off_machine.get()
                     >
-                        {move || if turn_off_loading.get() { "Turning off..." } else { "Turn off machine" }}
+                        {move || {
+                            if turn_off_loading.get() {
+                                "Turning off..."
+                            } else {
+                                "Turn off machine"
+                            }
+                        }}
                     </button>
                 </div>
                 {move || {
@@ -564,7 +588,7 @@ fn MachineDetailPage() -> impl IntoView {
                         } else {
                             "feedback feedback--danger"
                         }
-                        .to_string();
+                            .to_string();
                         view! { <p class=class>{message}</p> }
                     } else {
                         let class = "feedback feedback--hidden".to_string();
@@ -579,7 +603,7 @@ fn MachineDetailPage() -> impl IntoView {
                         } else {
                             "feedback feedback--danger"
                         }
-                        .to_string();
+                            .to_string();
                         view! { <p class=class>{message}</p> }
                     } else {
                         let class = "feedback feedback--hidden".to_string();
@@ -587,11 +611,10 @@ fn MachineDetailPage() -> impl IntoView {
                         view! { <p class=class>{empty}</p> }
                     }
                 }}
-                <Show
-                    when=move || !can_turn_off_machine.get()
-                    fallback=|| view! { <></> }
-                >
-                    <p class="field-help">"Configure a remote shutdown port on the machine to activate this action."</p>
+                <Show when=move || !can_turn_off_machine.get() fallback=|| view! { <></> }>
+                    <p class="field-help">
+                        "Configure a remote shutdown port on the machine to activate this action."
+                    </p>
                 </Show>
             </div>
 
@@ -608,7 +631,6 @@ fn MachineDetailPage() -> impl IntoView {
             </div>
         </div>
     }
-
 }
 
 #[component]
@@ -653,7 +675,7 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
     }
 
     let on_submit = move |ev: SubmitEvent| {
-        let set_loading = set_loading.clone();
+        let set_loading = set_loading;
         set_loading.set(true);
         set_discovered_devices.set(vec![]);
         // stop the page from reloading!
@@ -669,9 +691,7 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                 .unwrap_or_else(|err| {
                     window()
                         .unwrap()
-                        .alert_with_message(&format!(
-                            "Error scanning network, check the logs in the backend"
-                        ))
+                        .alert_with_message(&"Error scanning network, check the logs in the backend".to_string())
                         .unwrap();
                     console::log_1(&format!("Error scanning network: {}", err).into());
                 });
@@ -686,7 +706,7 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
         set_discovered_devices: WriteSignal<Vec<DiscoveredDevice>>,
     ) {
         let new_machine = Machine {
-            name: device.hostname.clone().unwrap_or_else(|| "".to_string()),
+            name: device.hostname.clone().unwrap_or_default(),
             mac: device.mac.clone(),
             ip: device.ip.clone(),
             description: None,
@@ -703,7 +723,9 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
             <div class="card scan-card">
                 <header class="card-header">
                     <h1 class="card-title">"Wakezilla Manager"</h1>
-                    <p class="card-subtitle">"Wake, manage, and forward to your registered machines."</p>
+                    <p class="card-subtitle">
+                        "Wake, manage, and forward to your registered machines."
+                    </p>
                 </header>
                 <form on:submit=on_submit class="scan-grid">
                     <select
@@ -721,22 +743,18 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                                 .iter()
                                 .map(|iface| {
                                     view! {
-                                        <option value=iface.name.clone()>
+                                        <option value=iface
+                                            .name
+                                            .clone()>
                                             {format!("{} · {} ({})", iface.name, iface.ip, iface.mac)}
-                                            </option>
+                                        </option>
                                     }
                                 })
                                 .collect::<Vec<_>>()
                         }}
                     </select>
                     <button id="scan-btn" class="btn btn-primary" disabled=move || loading.get()>
-                        {move || {
-                            if loading.get() {
-                                "Scanning…"
-                            } else {
-                                "Scan network"
-                            }
-                        }}
+                        {move || { if loading.get() { "Scanning…" } else { "Scan network" } }}
                     </button>
                 </form>
             </div>
@@ -745,7 +763,9 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                 <div class="card table-card" id="scan-results-container">
                     <div class="card-header">
                         <h3 class="card-title">"Discovered devices"</h3>
-                        <p class="card-subtitle">"Tap a device to pre-fill the create form below."</p>
+                        <p class="card-subtitle">
+                            "Tap a device to pre-fill the create form below."
+                        </p>
                     </div>
                     <div class="table-container">
                         <table class="table" id="scan-results-table">
@@ -765,7 +785,12 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                                         view! {
                                             <tr>
                                                 <td attr:data-label="IP address">{device.ip.clone()}</td>
-                                                <td attr:data-label="Hostname">{device.hostname.clone().unwrap_or_else(|| "N/A".to_string())}</td>
+                                                <td attr:data-label="Hostname">
+                                                    {device
+                                                        .hostname
+                                                        .clone()
+                                                        .unwrap_or_else(|| "N/A".to_string())}
+                                                </td>
                                                 <td attr:data-label="MAC address">{device.mac.clone()}</td>
                                                 <td attr:data-label="Action" class="table-actions">
                                                     <button
@@ -774,8 +799,8 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
                                                         on:click=move |_| {
                                                             handle_add_machine(
                                                                 device.clone(),
-                                                                set_machine.clone(),
-                                                                set_discovered_devices.clone(),
+                                                                set_machine,
+                                                                set_discovered_devices,
                                                             );
                                                         }
                                                     >
@@ -793,7 +818,6 @@ fn Header(set_machine: WriteSignal<Machine>) -> impl IntoView {
             </Show>
         </div>
     }
-
 }
 
 #[component]
@@ -856,10 +880,13 @@ fn RegistredMachines(
                     <thead>
                         <tr>
                             <th>"Name"</th>
-                            <th>"MAC"</th>
-                            <th>"IP"</th>
-                            <th>"Description"</th>
+                            <th class="hide-mobile">"MAC"</th>
+                            <th class="hide-mobile">"IP"</th>
+                            <th class="hide-mobile">"Description"</th>
+                            <th class="hide-mobile">"Port"</th>
+                            <th class="hide-mobile">"Turn Off"</th>
                             <th>"Status"</th>
+                            <th class="hide-mobile">"Forwards"</th>
                             <th>"Actions"</th>
                         </tr>
                     </thead>
@@ -867,7 +894,13 @@ fn RegistredMachines(
                         <Show
                             when=move || !machines.get().is_empty()
                             fallback=|| {
-                                view! { <tr><td colspan=6 class="table-empty">"No machines yet. Use the form below to add one."</td></tr> }
+                                view! {
+                                    <tr>
+                                        <td colspan=9 class="table-empty">
+                                            "No machines yet. Use the form below to add one."
+                                        </td>
+                                    </tr>
+                                }
                             }
                         >
                             <For
@@ -877,49 +910,114 @@ fn RegistredMachines(
                                     let mac_href = machine.mac.clone();
                                     let mac_display = mac_href.clone();
                                     let ip_display = machine.ip.clone();
-                                    let description_display =
-                                        machine.description.clone().unwrap_or_else(|| "-".to_string());
+                                    let description_display = machine
+                                        .description
+                                        .clone()
+                                        .unwrap_or_else(|| "-".to_string());
                                     let status_mac = mac_href.clone();
-
                                     let wake_mac_disabled = mac_href.clone();
                                     let wake_mac_click = mac_href.clone();
                                     let wake_mac_task = mac_href.clone();
-
                                     let turn_off_mac_disabled = mac_href.clone();
                                     let turn_off_mac_click = mac_href.clone();
                                     let turn_off_mac_task = mac_href.clone();
                                     let turn_off_mac_label = mac_href.clone();
-
                                     let delete_mac = mac_href.clone();
-
                                     let name_link = machine.name.clone();
                                     let name_for_wake = machine.name.clone();
                                     let name_for_turnoff = machine.name.clone();
                                     let name_for_confirm = machine.name.clone();
-
-                                    let set_wake_in_progress_btn = set_wake_in_progress.clone();
-                                    let wake_in_progress_for_disable = wake_in_progress.clone();
-                                    let wake_in_progress_for_click = wake_in_progress.clone();
-
-                                    let set_turn_off_in_progress_btn = set_turn_off_in_progress.clone();
-                                    let turn_off_in_progress_for_disable = turn_off_in_progress.clone();
-                                    let turn_off_in_progress_for_click = turn_off_in_progress.clone();
-                                    let turn_off_in_progress_for_label = turn_off_in_progress.clone();
-
-                                    let can_turn_off_machine =
-                                        machine.can_be_turned_off && machine.turn_off_port.is_some();
+                                    let set_wake_in_progress_btn = set_wake_in_progress;
+                                    let wake_in_progress_for_disable = wake_in_progress;
+                                    let wake_in_progress_for_click = wake_in_progress;
+                                    let set_turn_off_in_progress_btn = set_turn_off_in_progress;
+                                    let turn_off_in_progress_for_disable = turn_off_in_progress;
+                                    let turn_off_in_progress_for_click = turn_off_in_progress;
+                                    let turn_off_in_progress_for_label = turn_off_in_progress;
+                                    let can_turn_off_machine = machine.can_be_turned_off
+                                        && machine.turn_off_port.is_some();
+                                    let turn_off_port_text = machine
+                                        .turn_off_port
+                                        .map(|port| port.to_string())
+                                        .unwrap_or_else(|| "-".to_string());
+                                    let can_turn_off_text = if machine.can_be_turned_off {
+                                        "Yes".to_string()
+                                    } else {
+                                        "No".to_string()
+                                    };
+                                    let port_forwards_text = if machine.port_forwards.is_empty() {
+                                        "-".to_string()
+                                    } else {
+                                        machine
+                                            .port_forwards
+                                            .iter()
+                                            .map(|pf| {
+                                                let pf_name = pf
+                                                    .name
+                                                    .clone()
+                                                    .unwrap_or_else(|| "-".to_string());
+                                                format!(
+                                                    "{} → {} ({})",
+                                                    pf.local_port,
+                                                    pf.target_port,
+                                                    pf_name,
+                                                )
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    };
+                                    let mobile_port_forward_labels: Vec<String> = if machine
+                                        .port_forwards
+                                        .is_empty()
+                                    {
+                                        vec!["-".to_string()]
+                                    } else {
+                                        machine
+                                            .port_forwards
+                                            .iter()
+                                            .map(|pf| {
+                                                let pf_name = pf
+                                                    .name
+                                                    .clone()
+                                                    .unwrap_or_else(|| "-".to_string());
+                                                format!(
+                                                    "{} → {} ({})",
+                                                    pf.local_port,
+                                                    pf.target_port,
+                                                    pf_name,
+                                                )
+                                            })
+                                            .collect::<Vec<_>>()
+                                    };
 
                                     view! {
                                         <tr>
-                                            <td attr:data-label="Name">
-                                                <a class="text-link" href=format!("/machines/{}", mac_href.clone())>
+                                            <td>
+                                                <a
+                                                    class="text-link"
+                                                    href=format!("/machines/{}", mac_href.clone())
+                                                >
                                                     {name_link}
                                                 </a>
                                             </td>
-                                            <td attr:data-label="MAC"><code>{mac_display.clone()}</code></td>
-                                            <td attr:data-label="IP"><code>{ip_display.clone()}</code></td>
-                                            <td attr:data-label="Description">{description_display.clone()}</td>
-                                            <td attr:data-label="Status">
+                                            <td class="hide-mobile">
+                                                <code>{mac_display.clone()}</code>
+                                            </td>
+                                            <td class="hide-mobile">
+                                                <code>{ip_display.clone()}</code>
+                                            </td>
+                                            <td class="hide-mobile">{description_display.clone()}</td>
+                                            <td class="hide-mobile">
+                                                <span class="font-mono text-xs sm:text-sm">
+                                                    {move || turn_off_port_text.clone()}
+                                                </span>
+                                            </td>
+                                            <td class="hide-mobile">
+                                                <span class="text-xs sm:text-sm">
+                                                    {move || can_turn_off_text.clone()}
+                                                </span>
+                                            </td>
+                                            <td>
                                                 {move || {
                                                     let key = status_mac.clone();
                                                     let is_online = status_machine
@@ -928,13 +1026,26 @@ fn RegistredMachines(
                                                         .cloned()
                                                         .unwrap_or(false);
                                                     if is_online {
-                                                        view! { <span class="status-pill status-pill--online">"Online"</span> }
+                                                        view! {
+                                                            <span class="status-pill status-pill--online">
+                                                                "Online"
+                                                            </span>
+                                                        }
                                                     } else {
-                                                        view! { <span class="status-pill status-pill--offline">"Offline"</span> }
+                                                        view! {
+                                                            <span class="status-pill status-pill--offline">
+                                                                "Offline"
+                                                            </span>
+                                                        }
                                                     }
                                                 }}
                                             </td>
-                                            <td class="table-actions" attr:data-label="Actions">
+                                            <td class="hide-mobile">
+                                                <span class="font-mono text-xs sm:text-sm">
+                                                    {move || port_forwards_text.clone()}
+                                                </span>
+                                            </td>
+                                            <td class="table-actions">
                                                 <button
                                                     class="btn-icon btn-icon--positive"
                                                     title="Wake machine"
@@ -955,7 +1066,7 @@ fn RegistredMachines(
                                                             return;
                                                         }
                                                         set_wake_in_progress_btn.set(Some(wake_mac_task.clone()));
-                                                        let set_wake_after = set_wake_in_progress_btn.clone();
+                                                        let set_wake_after = set_wake_in_progress_btn;
                                                         let mac_for_request = wake_mac_task.clone();
                                                         let name_for_alert = name_for_wake.clone();
                                                         leptos::task::spawn_local(async move {
@@ -964,28 +1075,37 @@ fn RegistredMachines(
                                                                     if let Some(win) = window() {
                                                                         let _ = win.alert_with_message(&message);
                                                                     }
-                                                                    console_log(&format!(
-                                                                        "Wake request sent for {} ({})",
-                                                                        name_for_alert, mac_for_request
-                                                                    ));
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Wake request sent for {} ({})",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                        ),
+                                                                    );
                                                                 }
                                                                 Err(err) => {
                                                                     if let Some(win) = window() {
-                                                                        let _ = win.alert_with_message(&format!(
-                                                                            "Failed to wake machine: {}",
-                                                                            err
-                                                                        ));
+                                                                        let _ = win
+                                                                            .alert_with_message(
+                                                                                &format!("Failed to wake machine: {}", err),
+                                                                            );
                                                                     }
-                                                                    console_log(&format!(
-                                                                        "Failed to wake {} ({}): {}",
-                                                                        name_for_alert, mac_for_request, err
-                                                                    ));
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Failed to wake {} ({}): {}",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                            err,
+                                                                        ),
+                                                                    );
                                                                 }
                                                             }
                                                             set_wake_after.set(None);
                                                         });
                                                     }
-                                                >"⚡"</button>
+                                                >
+                                                    "⚡"
+                                                </button>
                                                 <button
                                                     class="btn-icon"
                                                     title="Turn off machine"
@@ -1000,9 +1120,10 @@ fn RegistredMachines(
                                                     on:click=move |_| {
                                                         if !can_turn_off_machine {
                                                             if let Some(win) = window() {
-                                                                let _ = win.alert_with_message(
-                                                                    "Enable remote turn-off with a valid port before triggering this action."
-                                                                );
+                                                                let _ = win
+                                                                    .alert_with_message(
+                                                                        "Enable remote turn-off with a valid port before triggering this action.",
+                                                                    );
                                                             }
                                                             return;
                                                         }
@@ -1014,8 +1135,9 @@ fn RegistredMachines(
                                                         {
                                                             return;
                                                         }
-                                                        set_turn_off_in_progress_btn.set(Some(turn_off_mac_task.clone()));
-                                                        let set_turn_off_after = set_turn_off_in_progress_btn.clone();
+                                                        set_turn_off_in_progress_btn
+                                                            .set(Some(turn_off_mac_task.clone()));
+                                                        let set_turn_off_after = set_turn_off_in_progress_btn;
                                                         let mac_for_request = turn_off_mac_task.clone();
                                                         let name_for_alert = name_for_turnoff.clone();
                                                         leptos::task::spawn_local(async move {
@@ -1024,22 +1146,29 @@ fn RegistredMachines(
                                                                     if let Some(win) = window() {
                                                                         let _ = win.alert_with_message(&message);
                                                                     }
-                                                                    console_log(&format!(
-                                                                        "Turn-off request sent for {} ({})",
-                                                                        name_for_alert, mac_for_request
-                                                                    ));
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Turn-off request sent for {} ({})",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                        ),
+                                                                    );
                                                                 }
                                                                 Err(err) => {
                                                                     if let Some(win) = window() {
-                                                                        let _ = win.alert_with_message(&format!(
-                                                                            "Failed to turn off machine: {}",
-                                                                            err
-                                                                        ));
+                                                                        let _ = win
+                                                                            .alert_with_message(
+                                                                                &format!("Failed to turn off machine: {}", err),
+                                                                            );
                                                                     }
-                                                                    console_log(&format!(
-                                                                        "Failed to turn off {} ({}): {}",
-                                                                        name_for_alert, mac_for_request, err
-                                                                    ));
+                                                                    console_log(
+                                                                        &format!(
+                                                                            "Failed to turn off {} ({}): {}",
+                                                                            name_for_alert,
+                                                                            mac_for_request,
+                                                                            err,
+                                                                        ),
+                                                                    );
                                                                 }
                                                             }
                                                             set_turn_off_after.set(None);
@@ -1065,16 +1194,36 @@ fn RegistredMachines(
                                                     on:click=move |_| {
                                                         if window()
                                                             .unwrap()
-                                                            .confirm_with_message(&format!(
-                                                                "Are you sure you want to delete machine {}?",
-                                                                name_for_confirm.clone(),
-                                                            ))
+                                                            .confirm_with_message(
+                                                                &format!(
+                                                                    "Are you sure you want to delete machine {}?",
+                                                                    name_for_confirm.clone(),
+                                                                ),
+                                                            )
                                                             .unwrap_or(false)
                                                         {
                                                             on_delete(delete_mac.clone());
                                                         }
                                                     }
-                                                >"🗑"</button>
+                                                >
+                                                    "🗑"
+                                                </button>
+                                                <div class="mobile-port-forwards show-mobile">
+                                                    <span class="mobile-port-forwards__title">
+                                                        "Port forwards"
+                                                    </span>
+                                                    <div class="mobile-port-forwards__list">
+                                                        {mobile_port_forward_labels
+                                                            .iter()
+                                                            .cloned()
+                                                            .map(|label| {
+                                                                view! {
+                                                                    <span class="mobile-port-forwards__chip">{label}</span>
+                                                                }
+                                                            })
+                                                            .collect::<Vec<_>>()}
+                                                    </div>
+                                                </div>
                                             </td>
                                         </tr>
                                     }
@@ -1086,7 +1235,6 @@ fn RegistredMachines(
             </div>
         </section>
     }
-
 }
 
 #[component]
@@ -1120,7 +1268,11 @@ fn AddMachine(
             "description" => current.description = Some(value),
             "turn_off_port" => {
                 let trimmed = value.trim();
-                current.turn_off_port = if trimmed.is_empty() { None } else { trimmed.parse().ok() };
+                current.turn_off_port = if trimmed.is_empty() {
+                    None
+                } else {
+                    trimmed.parse().ok()
+                };
             }
             "can_be_turned_off" => {
                 let enabled = value == "on";
@@ -1164,7 +1316,7 @@ fn AddMachine(
                         set_show_turn_off_port.set(false);
                         set_errors.set(HashMap::new());
                     } else {
-                        console_log(&"Error creating machine".to_string());
+                        console_log("Error creating machine");
                     }
                 });
                 set_loading.set(false);
@@ -1179,7 +1331,6 @@ fn AddMachine(
                     new_errors.insert(field.to_string(), field_errors);
                 }
                 set_errors.set(new_errors);
-                return;
             }
         }
     };
@@ -1192,7 +1343,8 @@ fn AddMachine(
                     {move || {
                         let ip_hint = machine_form_data.get().ip;
                         if ip_hint.is_empty() {
-                            "Register a device to make it available for wake and forwarding.".to_string()
+                            "Register a device to make it available for wake and forwarding."
+                                .to_string()
                         } else {
                             format!("Pre-filled from discovery: {}", ip_hint)
                         }
@@ -1214,9 +1366,9 @@ fn AddMachine(
                                 set_input_value(
                                     "name",
                                     input_value,
-                                    set_machine_form_data.clone(),
-                                    machine_form_data.clone(),
-                                    set_show_turn_off_port.clone(),
+                                    set_machine_form_data,
+                                    machine_form_data,
+                                    set_show_turn_off_port,
                                 );
                             }
                             prop:value=move || machine_form_data.get().name
@@ -1236,9 +1388,9 @@ fn AddMachine(
                                 set_input_value(
                                     "mac",
                                     input_value,
-                                    set_machine_form_data.clone(),
-                                    machine_form_data.clone(),
-                                    set_show_turn_off_port.clone(),
+                                    set_machine_form_data,
+                                    machine_form_data,
+                                    set_show_turn_off_port,
                                 );
                             }
                             prop:value=move || machine_form_data.get().mac
@@ -1261,9 +1413,9 @@ fn AddMachine(
                                 set_input_value(
                                     "ip",
                                     input_value,
-                                    set_machine_form_data.clone(),
-                                    machine_form_data.clone(),
-                                    set_show_turn_off_port.clone(),
+                                    set_machine_form_data,
+                                    machine_form_data,
+                                    set_show_turn_off_port,
                                 );
                             }
                             prop:value=move || machine_form_data.get().ip
@@ -1284,12 +1436,14 @@ fn AddMachine(
                             set_input_value(
                                 "description",
                                 input_value,
-                                set_machine_form_data.clone(),
-                                machine_form_data.clone(),
-                                set_show_turn_off_port.clone(),
+                                set_machine_form_data,
+                                machine_form_data,
+                                set_show_turn_off_port,
                             );
                         }
-                        prop:value=move || machine_form_data.get().description.clone().unwrap_or_default()
+                        prop:value=move || {
+                            machine_form_data.get().description.clone().unwrap_or_default()
+                        }
                     />
                     <ErrorDisplay erros=erros key="description" />
                 </div>
@@ -1302,26 +1456,26 @@ fn AddMachine(
                         class="checkbox"
                         prop:checked=move || machine_form_data.get().can_be_turned_off
                         on:input:target=move |ev| {
-                            let input_value = if ev.target().checked() { "on" } else { "off" }.to_string();
+                            let input_value = if ev.target().checked() { "on" } else { "off" }
+                                .to_string();
                             set_input_value(
                                 "can_be_turned_off",
                                 input_value,
-                                set_machine_form_data.clone(),
-                                machine_form_data.clone(),
-                                set_show_turn_off_port.clone(),
+                                set_machine_form_data,
+                                machine_form_data,
+                                set_show_turn_off_port,
                             );
                         }
                     />
                     <div class="field-toggle__content">
                         <label for="can_be_turned_off">"Allow remote turn off"</label>
-                        <p class="field-help">"Requires the machine to expose a shutdown endpoint."</p>
+                        <p class="field-help">
+                            "Requires the machine to expose a shutdown endpoint."
+                        </p>
                     </div>
                 </div>
 
-                <Show
-                    when=move || show_turn_off_port.get()
-                    fallback=|| view! { <></> }
-                >
+                <Show when=move || show_turn_off_port.get() fallback=|| view! { <></> }>
                     {move || {
                         view! {
                             <div class="field">
@@ -1338,9 +1492,9 @@ fn AddMachine(
                                         set_input_value(
                                             "turn_off_port",
                                             input_value,
-                                            set_machine_form_data.clone(),
-                                            machine_form_data.clone(),
-                                            set_show_turn_off_port.clone(),
+                                            set_machine_form_data,
+                                            machine_form_data,
+                                            set_show_turn_off_port,
                                         );
                                     }
                                     prop:value=move || {
@@ -1360,18 +1514,13 @@ fn AddMachine(
                 <div class="form-footer">
                     <button type="submit" class="btn btn-primary" disabled=move || loading.get()>
                         {move || {
-                            if loading.get() {
-                                "Adding machine…"
-                            } else {
-                                "Add machine"
-                            }
+                            if loading.get() { "Adding machine…" } else { "Add machine" }
                         }}
                     </button>
                 </div>
             </form>
         </section>
     }
-
 }
 #[component]
 fn HomePage() -> impl IntoView {
@@ -1435,11 +1584,13 @@ fn HomePage() -> impl IntoView {
 
     view! {
         <Header set_machine=set_machine />
-        <RegistredMachines
-            machines=registred_machines
-            status_machine=status_machine
-            set_registred_machines=set_registred_machines
-        />
+        <Show when=move || { !registred_machines.get().is_empty() } fallback=|| view! {}>
+            <RegistredMachines
+                machines=registred_machines
+                status_machine=status_machine
+                set_registred_machines=set_registred_machines
+            />
+        </Show>
         <AddMachine
             machine=machine
             registred_machines=registred_machines

@@ -3,7 +3,6 @@ use crate::models::{DiscoveredDevice, Machine, NetworkInterface};
 use leptos::leptos_dom::logging::console_log;
 
 use gloo_net::http::Request;
-use wasm_bindgen::prelude::*;
 use web_sys::window;
 const DEFAULT_API_PORT: u16 = 3000;
 
