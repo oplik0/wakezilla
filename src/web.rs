@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -124,6 +123,7 @@ pub struct AddMachineForm {
     pub can_be_turned_off: bool,
     pub requests_per_hour: Option<u32>,
     pub period_minutes: Option<u32>,
+    pub port_forwards: Option<Vec<PortForward>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]

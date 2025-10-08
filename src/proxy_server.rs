@@ -176,7 +176,7 @@ async fn add_machine_api(
             max_requests: payload.requests_per_hour.unwrap_or(1000),
             period_minutes: payload.period_minutes.unwrap_or(60),
         },
-        port_forwards: Vec::new(),
+        port_forwards: payload.port_forwards.unwrap_or_default(),
     };
     let mut machines = state.machines.write().await;
     web::start_proxy_if_configured(&new_machine, &state);

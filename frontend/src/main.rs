@@ -726,7 +726,11 @@ fn Header(
             description: None,
             turn_off_port: None,
             can_be_turned_off: false,
-            port_forwards: vec![],
+            port_forwards: vec![PortForward {
+                name: None,
+                local_port: 0,
+                target_port: 0,
+            }],
         };
         set_machine.set(new_machine);
         set_discovered_devices.set(vec![]);
@@ -1260,12 +1264,26 @@ fn AddMachine(
     let navigate = leptos_router::hooks::use_navigate();
     let (machine_form_data, set_machine_form_data) = signal::<Machine>(machine.get());
     let (show_turn_off_port, set_show_turn_off_port) = signal(false);
+    let (port_forwards, set_port_forwards) = signal::<Vec<PortForward>>(vec![]);
     let (erros, set_errors) = signal::<HashMap<String, Vec<String>>>(HashMap::new());
     let (loading, set_loading) = signal(false);
     Effect::new(move |_| {
         let current = machine.get();
         set_show_turn_off_port.set(current.can_be_turned_off);
+        console_log(&format!(
+            "Pre-filling form with discovered machine: {:?} ({})",
+            current.port_forwards.clone(),
+            current.ip
+        ));
+        set_port_forwards.set(current.port_forwards.clone());
         set_machine_form_data.set(current);
+    });
+
+    Effect::new(move |_| {
+        let forwards = port_forwards.get();
+        set_machine_form_data.update(|machine| {
+            machine.port_forwards = forwards.clone();
+        });
     });
 
     fn set_input_value(
@@ -1331,6 +1349,7 @@ fn AddMachine(
                             can_be_turned_off: false,
                             port_forwards: vec![],
                         });
+                        set_port_forwards.set(vec![]);
                         set_show_turn_off_port.set(false);
                         set_errors.set(HashMap::new());
                         let url = format!("/machines/{}", new_machine.mac);
@@ -1468,6 +1487,163 @@ fn AddMachine(
                     <ErrorDisplay erros=erros key="description" />
                 </div>
 
+                <div class="field">
+                    <div class="field-header">
+                        <label>"Port forwards"</label>
+                        <button
+                            type="button"
+                            class="btn btn-soft btn-sm"
+                            on:click=move |_| {
+                                set_port_forwards
+                                    .update(|pfs| {
+                                        pfs.push(PortForward {
+                                            name: None,
+                                            local_port: 0,
+                                            target_port: 0,
+                                        });
+                                    });
+                            }
+                        >
+                            "+ Add port"
+                        </button>
+                    </div>
+                    <p class="field-help">
+                        "Expose local TCP ports that should forward to the machine once it wakes."
+                    </p>
+                    <Show
+                        when=move || !port_forwards.get().is_empty()
+                        fallback=|| {
+                            view! { <p class="field-empty">"No port forwards configured."</p> }
+                        }
+                    >
+                        <div class="port-forward-list">
+                            <For
+                                each=move || {
+                                    port_forwards
+                                        .get()
+                                        .into_iter()
+                                        .enumerate()
+                                        .collect::<Vec<(usize, PortForward)>>()
+                                }
+                                key=|(idx, _)| *idx
+                                children=move |(idx, _)| {
+                                    let row = idx + 1;
+                                    let name_id = format!("pf-name-{}", row);
+                                    let local_id = format!("pf-local-{}", row);
+                                    let target_id = format!("pf-target-{}", row);
+
+                                    view! {
+                                        <div class="port-forward-item">
+                                            <div class="field">
+                                                <label for=name_id
+                                                    .clone()>{format!("Service name {}", row)}</label>
+                                                <input
+                                                    class="input"
+                                                    id=name_id
+                                                    placeholder="Service name"
+                                                    prop:value=move || {
+                                                        port_forwards
+                                                            .get()
+                                                            .get(idx)
+                                                            .and_then(|pf| pf.name.clone())
+                                                            .unwrap_or_default()
+                                                    }
+                                                    on:input=move |ev| {
+                                                        let target = ev.target().unwrap();
+                                                        let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                        let value = input.value();
+                                                        let trimmed = value.trim().is_empty();
+                                                        set_port_forwards
+                                                            .update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.name = if trimmed { None } else { Some(value.clone()) };
+                                                                }
+                                                            });
+                                                    }
+                                                />
+                                            </div>
+                                            <div class="field">
+                                                <label for=local_id
+                                                    .clone()>{format!("Local port {}", row)}</label>
+                                                <input
+                                                    class="input"
+                                                    id=local_id
+                                                    placeholder="Local port"
+                                                    type="number"
+                                                    min="1"
+                                                    max="65535"
+                                                    prop:value=move || {
+                                                        port_forwards
+                                                            .get()
+                                                            .get(idx)
+                                                            .map(|pf| pf.local_port.to_string())
+                                                            .unwrap_or_default()
+                                                    }
+                                                    on:input=move |ev| {
+                                                        let target = ev.target().unwrap();
+                                                        let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                        let parsed = input.value().parse::<u16>().unwrap_or(0);
+                                                        set_port_forwards
+                                                            .update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.local_port = parsed;
+                                                                }
+                                                            });
+                                                    }
+                                                />
+                                            </div>
+                                            <div class="field">
+                                                <label for=target_id
+                                                    .clone()>{format!("Target port {}", row)}</label>
+                                                <input
+                                                    class="input"
+                                                    id=target_id
+                                                    placeholder="Target port"
+                                                    type="number"
+                                                    min="1"
+                                                    max="65535"
+                                                    prop:value=move || {
+                                                        port_forwards
+                                                            .get()
+                                                            .get(idx)
+                                                            .map(|pf| pf.target_port.to_string())
+                                                            .unwrap_or_default()
+                                                    }
+                                                    on:input=move |ev| {
+                                                        let target = ev.target().unwrap();
+                                                        let input: HtmlInputElement = target.dyn_into().unwrap();
+                                                        let parsed = input.value().parse::<u16>().unwrap_or(0);
+                                                        set_port_forwards
+                                                            .update(|pfs| {
+                                                                if let Some(pf) = pfs.get_mut(idx) {
+                                                                    pf.target_port = parsed;
+                                                                }
+                                                            });
+                                                    }
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="btn btn-ghost"
+                                                on:click=move |_| {
+                                                    set_port_forwards
+                                                        .update(|pfs| {
+                                                            if idx < pfs.len() {
+                                                                pfs.remove(idx);
+                                                            }
+                                                        });
+                                                }
+                                            >
+                                                "Remove"
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            />
+                        </div>
+                    </Show>
+                </div>
+
                 <div class="field field-toggle">
                     <input
                         type="checkbox"
@@ -1530,7 +1706,6 @@ fn AddMachine(
                         }
                     }}
                 </Show>
-
                 <div class="form-footer">
                     <button type="submit" class="btn btn-primary" disabled=move || loading.get()>
                         {move || {
@@ -1551,7 +1726,11 @@ fn HomePage() -> impl IntoView {
         description: None,
         turn_off_port: None,
         can_be_turned_off: false,
-        port_forwards: vec![],
+        port_forwards: vec![PortForward {
+            name: None,
+            local_port: 0,
+            target_port: 0,
+        }],
     };
     let (machine, set_machine) = signal::<Machine>(default_machine);
 
