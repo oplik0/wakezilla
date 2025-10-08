@@ -829,6 +829,7 @@ mod tests {
             can_be_turned_off: true,
             requests_per_hour: Some(12),
             period_minutes: Some(6),
+            port_forwards: None,
         };
 
         let response = add_machine(State(state.clone()), Form(form)).await;
@@ -854,6 +855,7 @@ mod tests {
             can_be_turned_off: false,
             requests_per_hour: None,
             period_minutes: None,
+            port_forwards: None,
         };
 
         let response = add_machine(State(state.clone()), Form(form)).await;

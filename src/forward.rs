@@ -71,31 +71,55 @@ pub async fn proxy(
             let mac = machine.mac.clone();
             let amount_req = machine.request_rate.max_requests;
             let per_minutes = machine.request_rate.period_minutes;
+            let mut stop_rx = rx.clone();
 
             tokio::spawn(async move {
                 let mut count = 0;
                 loop {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    let elapsed = {
-                        let last_time = last_request_time.lock().unwrap();
-                        last_time.elapsed()
-                    };
-                    debug!(
-                        "checking for inactivity for machine {} ({}), elapsed: {:?}, per_minutes: {}, amount_req: {}",
-                        remote_ip, mac, elapsed, per_minutes, amount_req
-                    );
-                    if elapsed > Duration::from_secs(per_minutes as u64 * 60) {
-                        count += 1;
-                        if count >= amount_req {
-                            if let Err(e) =
-                                turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await
-                            {
-                                error!("Failed to send turn-off signal: {}", e);
+                    tokio::select! {
+                        changed = stop_rx.changed() => {
+                            match changed {
+                                Ok(_) => {
+                                    if !*stop_rx.borrow() {
+                                        debug!(
+                                            "stopping inactivity monitor for machine {} ({})",
+                                            remote_ip, mac
+                                        );
+                                        break;
+                                    }
+                                }
+                                Err(_) => {
+                                    debug!(
+                                        "stopping inactivity monitor for machine {} ({}) because channel closed",
+                                        remote_ip, mac
+                                    );
+                                    break;
+                                }
                             }
-                            break;
                         }
-                    } else {
-                        count = 0;
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                            let elapsed = {
+                                let last_time = last_request_time.lock().unwrap();
+                                last_time.elapsed()
+                            };
+                            debug!(
+                                "checking for inactivity for machine {} ({}), elapsed: {:?}, per_minutes: {}, amount_req: {}",
+                                remote_ip, mac, elapsed, per_minutes, amount_req
+                            );
+                            if elapsed > Duration::from_secs(per_minutes as u64 * 60) {
+                                count += 1;
+                                if count >= amount_req {
+                                    if let Err(e) =
+                                        turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await
+                                    {
+                                        error!("Failed to send turn-off signal: {}", e);
+                                    }
+                                    break;
+                                }
+                            } else {
+                                count = 0;
+                            }
+                        }
                     }
                 }
             });
