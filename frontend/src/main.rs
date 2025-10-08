@@ -705,9 +705,7 @@ fn Header(
                 .unwrap_or_else(|err| {
                     window()
                         .unwrap()
-                        .alert_with_message(
-                            "Error scanning network, check the logs in the backend",
-                        )
+                        .alert_with_message("Error scanning network, check the logs in the backend")
                         .unwrap();
                     console::log_1(&format!("Error scanning network: {}", err).into());
                 });
@@ -1259,6 +1257,7 @@ fn AddMachine(
     registred_machines: ReadSignal<Vec<Machine>>,
     set_registred_machines: WriteSignal<Vec<Machine>>,
 ) -> impl IntoView {
+    let navigate = leptos_router::hooks::use_navigate();
     let (machine_form_data, set_machine_form_data) = signal::<Machine>(machine.get());
     let (show_turn_off_port, set_show_turn_off_port) = signal(false);
     let (erros, set_errors) = signal::<HashMap<String, Vec<String>>>(HashMap::new());
@@ -1306,7 +1305,9 @@ fn AddMachine(
     let on_submit = move |ev: SubmitEvent| {
         // stop the page from reloading!
         ev.prevent_default();
+
         set_loading.set(true);
+        let navigate = navigate.clone();
         match machine_form_data.get().validate() {
             Ok(_) => {
                 console::log_1(&"Form is valid".into());
@@ -1314,9 +1315,10 @@ fn AddMachine(
                 let mut new_machines = current_machines.clone();
 
                 leptos::task::spawn_local(async move {
-                    if let Ok(_) = create_machine(machine_form_data.get()).await {
+                    if (create_machine(machine_form_data.get()).await).is_ok() {
                         //console_log(&format!("Loaded {:?} machines", machines));
-                        new_machines.insert(0, machine_form_data.get());
+                        let new_machine = machine_form_data.get();
+                        new_machines.insert(0, new_machine.clone());
 
                         set_registred_machines.set(new_machines);
                         // Clear the form
@@ -1331,6 +1333,8 @@ fn AddMachine(
                         });
                         set_show_turn_off_port.set(false);
                         set_errors.set(HashMap::new());
+                        let url = format!("/machines/{}", new_machine.mac);
+                        navigate(&url, Default::default());
                     } else {
                         console_log("Error creating machine");
                     }
