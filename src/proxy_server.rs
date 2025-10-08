@@ -173,7 +173,7 @@ async fn add_machine_api(
         turn_off_port: payload.turn_off_port,
         can_be_turned_off: payload.can_be_turned_off,
         request_rate: web::RequestRateConfig {
-            max_requests: payload.requests_per_hour.unwrap_or(1000),
+            max_requests: payload.requests_per_hour.unwrap_or(60),
             period_minutes: payload.period_minutes.unwrap_or(60),
         },
         port_forwards: payload.port_forwards.unwrap_or_default(),

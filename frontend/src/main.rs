@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use wasm_bindgen::JsCast;
 use web_sys::HtmlInputElement;
@@ -22,7 +23,10 @@ use crate::api::{
     create_machine, delete_machine, fetch_interfaces, fetch_machines, fetch_scan_network,
     get_details_machine, is_machine_online, turn_off_machine, wake_machine,
 };
-use crate::models::{DiscoveredDevice, Machine, NetworkInterface, PortForward};
+use crate::models::{
+    DiscoveredDevice, Machine, NetworkInterface, PortForward, RequestRateConfig,
+    UpdateMachinePayload,
+};
 
 #[component]
 pub fn ErrorDisplay(
@@ -65,6 +69,10 @@ fn MachineDetailPage() -> impl IntoView {
         description: None,
         turn_off_port: None,
         can_be_turned_off: false,
+        request_rate: RequestRateConfig {
+            max_requests: 60,
+            period_minutes: 60,
+        },
         port_forwards: vec![],
     });
 
@@ -81,11 +89,11 @@ fn MachineDetailPage() -> impl IntoView {
     let (name, set_name) = signal(String::new());
     let (ip, set_ip) = signal(String::new());
     let (description, set_description) = signal(String::new());
-    let (turn_off_port, set_turn_off_port) = signal::<Option<u32>>(None); // Changed to u32 to match Machine model
+    let (turn_off_port, set_turn_off_port) = signal::<Option<u32>>(None);
     let (can_be_turned_off, set_can_be_turned_off) = signal(false);
     let (port_forwards, set_port_forwards) = signal::<Vec<PortForward>>(vec![]);
-    let (_requests_per_hour, _set_requests_per_hour) = signal(1000u32);
-    let (_period_minutes, _set_period_minutes) = signal(60u32);
+    let (requests_per_hour, set_requests_per_hour) = signal(60u32);
+    let (period_minutes, set_period_minutes) = signal(60u32);
     let (turn_off_loading, set_turn_off_loading) = signal(false);
     let (turn_off_feedback, set_turn_off_feedback) = signal::<Option<(bool, String)>>(None);
     let (wake_loading, set_wake_loading) = signal(false);
@@ -105,8 +113,8 @@ fn MachineDetailPage() -> impl IntoView {
         set_turn_off_port.set(machine.turn_off_port); // This should now match the type
         set_can_be_turned_off.set(machine.can_be_turned_off);
         set_port_forwards.set(machine.port_forwards.clone());
-        // Note: The Machine model doesn't have requests_per_hour and period_minutes in the frontend
-        // We'll just use default values for now, or you could extend the model
+        set_requests_per_hour.set(machine.request_rate.max_requests);
+        set_period_minutes.set(machine.request_rate.period_minutes);
     });
 
     let update_machine = move |ev: SubmitEvent| {
@@ -129,7 +137,7 @@ fn MachineDetailPage() -> impl IntoView {
         let updated_can_be_turned_off = can_be_turned_off.get();
         let updated_port_forwards = port_forwards.get();
 
-        // Create updated machine object
+        // Create updated machine object for local state refresh
         let updated_machine = Machine {
             name: updated_name,
             mac: updated_mac.clone(),
@@ -137,11 +145,37 @@ fn MachineDetailPage() -> impl IntoView {
             description: updated_description,
             turn_off_port: updated_turn_off_port,
             can_be_turned_off: updated_can_be_turned_off,
-            port_forwards: updated_port_forwards,
+            request_rate: RequestRateConfig {
+                max_requests: requests_per_hour.get(),
+                period_minutes: period_minutes.get(),
+            },
+            port_forwards: updated_port_forwards.clone(),
+        };
+
+        let payload = UpdateMachinePayload {
+            mac: updated_machine.mac.clone(),
+            ip: updated_machine.ip.clone(),
+            name: updated_machine.name.clone(),
+            description: updated_machine.description.clone(),
+            turn_off_port: updated_machine
+                .turn_off_port
+                .and_then(|port| u16::try_from(port).ok()),
+            can_be_turned_off: updated_machine.can_be_turned_off,
+            requests_per_hour: updated_machine.request_rate.max_requests,
+            period_minutes: updated_machine.request_rate.period_minutes,
+            port_forwards: updated_machine
+                .port_forwards
+                .iter()
+                .map(|pf| PortForward {
+                    name: Some(pf.name.clone().unwrap_or_default()),
+                    local_port: pf.local_port,
+                    target_port: pf.target_port,
+                })
+                .collect(),
         };
 
         leptos::task::spawn_local(async move {
-            match crate::api::update_machine(&updated_mac, &updated_machine).await {
+            match crate::api::update_machine(&updated_mac, &payload).await {
                 Ok(_) => {
                     web_sys::console::log_1(&"Machine updated successfully".into());
                     // Reload the machine details to reflect changes
@@ -535,12 +569,12 @@ fn MachineDetailPage() -> impl IntoView {
                             name="requests_per_hour"
                             class="input"
                             min="1"
-                            value=move || _requests_per_hour.get().to_string()
+                            value=move || requests_per_hour.get().to_string()
                             on:input=move |ev| {
                                 let target = ev.target().unwrap();
                                 let input: HtmlInputElement = target.dyn_into().unwrap();
                                 if let Ok(value) = input.value().parse() {
-                                    _set_requests_per_hour.set(value);
+                                    set_requests_per_hour.set(value);
                                 }
                             }
                         />
@@ -732,6 +766,10 @@ fn Header(
             description: None,
             turn_off_port: Some(3000),
             can_be_turned_off: false,
+            request_rate: RequestRateConfig {
+                max_requests: 60,
+                period_minutes: 60,
+            },
             port_forwards: vec![PortForward {
                 name: None,
                 local_port: 0,
@@ -1353,6 +1391,10 @@ fn AddMachine(
                             description: None,
                             turn_off_port: None,
                             can_be_turned_off: false,
+                            request_rate: RequestRateConfig {
+                                max_requests: 60,
+                                period_minutes: 60,
+                            },
                             port_forwards: vec![],
                         });
                         set_port_forwards.set(vec![]);
@@ -1734,6 +1776,10 @@ fn HomePage() -> impl IntoView {
         description: None,
         turn_off_port: Some(3000),
         can_be_turned_off: false,
+        request_rate: RequestRateConfig {
+            max_requests: 60,
+            period_minutes: 60,
+        },
         port_forwards: vec![PortForward {
             name: None,
             local_port: 0,

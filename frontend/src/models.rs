@@ -7,6 +7,12 @@ pub struct PortForward {
     pub target_port: u16,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RequestRateConfig {
+    pub max_requests: u32,
+    pub period_minutes: u32,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NetworkInterface {
     pub name: String,
@@ -30,6 +36,20 @@ pub struct Machine {
     pub description: Option<String>,
     pub turn_off_port: Option<u32>,
     pub can_be_turned_off: bool,
+    pub request_rate: RequestRateConfig,
+    pub port_forwards: Vec<PortForward>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct UpdateMachinePayload {
+    pub mac: String,
+    pub ip: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub turn_off_port: Option<u16>,
+    pub can_be_turned_off: bool,
+    pub requests_per_hour: u32,
+    pub period_minutes: u32,
     pub port_forwards: Vec<PortForward>,
 }
 

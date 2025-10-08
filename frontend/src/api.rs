@@ -1,4 +1,4 @@
-use crate::models::{DiscoveredDevice, Machine, NetworkInterface};
+use crate::models::{DiscoveredDevice, Machine, NetworkInterface, UpdateMachinePayload};
 
 use leptos::leptos_dom::logging::console_log;
 
@@ -45,10 +45,10 @@ pub async fn get_details_machine(mac: &str) -> Result<Machine, String> {
         .map_err(|e| e.to_string())
 }
 
-pub async fn update_machine(mac: &str, machine: &Machine) -> Result<(), String> {
+pub async fn update_machine(mac: &str, payload: &UpdateMachinePayload) -> Result<(), String> {
     let api_base = get_api_base();
     Request::put(&format!("{}/machines/{}", api_base, mac))
-        .json(machine)
+        .json(payload)
         .map_err(|e| e.to_string())?
         .send()
         .await
