@@ -724,7 +724,7 @@ fn Header(
             mac: device.mac.clone(),
             ip: device.ip.clone(),
             description: None,
-            turn_off_port: None,
+            turn_off_port: Some(3000),
             can_be_turned_off: false,
             port_forwards: vec![PortForward {
                 name: None,
@@ -1724,7 +1724,7 @@ fn HomePage() -> impl IntoView {
         mac: "".to_string(),
         ip: "".to_string(),
         description: None,
-        turn_off_port: None,
+        turn_off_port: Some(3000),
         can_be_turned_off: false,
         port_forwards: vec![PortForward {
             name: None,
