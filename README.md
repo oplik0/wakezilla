@@ -60,6 +60,7 @@
    You can check the health of the client server by visiting:
    http://<client-ip>:3001/health
 
+
 ## Usage
 
 ### Web Interface
@@ -126,6 +127,25 @@ Each machine can be configured with:
 - The server should be run on a trusted network
 - Access to the web interface should be restricted if exposed to the internet
 - The turn-off endpoint on clients should only be accessible from the server
+
+## Development
+### Prerequisites
+- Rust and Cargo installed
+- Clone the repository
+- Install dependencies with `make dependencies`
+
+on frontend folder run:
+```bash
+trunk serve
+```
+this will initialize the frontend in watch mode on port 8080
+
+on the root folder run:
+```bash
+cargo watch -x 'run -- proxy-server'
+```
+this will initialize the backend in watch mode on port 3000
+
 
 ## Troubleshooting
 
