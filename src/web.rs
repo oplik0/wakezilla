@@ -41,7 +41,7 @@ fn machines_db_path() -> PathBuf {
     let default_path = executable_dir.join(DEFAULT_DB_PATH);
     std::env::var("WAKEZILLA_MACHINES_DB_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(default_path))
+        .unwrap_or_else(|_| default_path)
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -70,26 +70,8 @@ pub struct PortForward {
 }
 
 #[derive(Deserialize)]
-pub struct WakeForm {
-    pub mac: String,
-}
-
-#[derive(Deserialize)]
 pub struct DeleteForm {
     pub mac: String,
-}
-
-#[derive(Deserialize)]
-pub struct RemoteTurnOffForm {
-    pub mac: String,
-}
-
-#[derive(Deserialize)]
-pub struct AddPortForwardForm {
-    pub mac: String,
-    pub name: String,
-    pub local_port: u16,
-    pub target_port: u16,
 }
 
 fn validate_ip(ip: &str) -> Result<(), ValidationError> {
