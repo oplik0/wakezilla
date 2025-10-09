@@ -8,11 +8,7 @@ dependencies:
 	cargo install trunk
 
 build:
-	echo "Building frontend and backend..." && \
-	cd frontend && trunk build --release && cd .. && \
-	echo "Frontend build complete." && \
-	cargo build --release && \
-	echo "Backend build complete."
+	cargo build --release 
 
 install:
 	$(MAKE) dependencies
