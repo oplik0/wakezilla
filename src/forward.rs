@@ -1,7 +1,9 @@
 use crate::connection_pool::ConnectionPool;
 use crate::{web::Machine, wol};
 use anyhow::{Context, Result};
+use std::collections::VecDeque;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::copy_bidirectional;
@@ -12,6 +14,58 @@ use tracing::{debug, error, info, warn};
 
 fn turn_off_url(remote_ip: &str, turn_off_port: u16) -> String {
     format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port)
+}
+
+#[derive(Clone)]
+struct TurnOffLimiter {
+    request_times: Arc<Mutex<VecDeque<Instant>>>,
+    max_requests: usize,
+    window: Duration,
+    turn_off_port: u16,
+    remote_ip: Ipv4Addr,
+    mac: String,
+    triggered: Arc<AtomicBool>,
+}
+
+impl TurnOffLimiter {
+    fn new(machine: &Machine, turn_off_port: u16) -> Self {
+        let window_minutes = machine.request_rate.period_minutes.max(1);
+        let window_secs = window_minutes.saturating_mul(60);
+        Self {
+            request_times: Arc::new(Mutex::new(VecDeque::new())),
+            max_requests: machine.request_rate.max_requests as usize,
+            window: Duration::from_secs(window_secs as u64),
+            turn_off_port,
+            remote_ip: machine.ip,
+            mac: machine.mac.clone(),
+            triggered: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn record_request(&self) -> Option<usize> {
+        if self.max_requests == 0 {
+            return None;
+        }
+
+        let now = Instant::now();
+        let mut times = self.request_times.lock().unwrap();
+        times.push_back(now);
+
+        while let Some(oldest) = times.front() {
+            if now.duration_since(*oldest) > self.window {
+                times.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        let current = times.len();
+        if current >= self.max_requests && !self.triggered.swap(true, Ordering::SeqCst) {
+            Some(current)
+        } else {
+            None
+        }
+    }
 }
 
 pub async fn turn_off_remote_machine(
@@ -61,72 +115,31 @@ pub async fn proxy(
         machine.request_rate.period_minutes
     );
 
-    let last_request_time = Arc::new(Mutex::new(Instant::now()));
-
-    if machine.request_rate.max_requests > 0 {
-        let last_request_time = Arc::clone(&last_request_time);
+    let rate_limiter = if machine.can_be_turned_off {
         if let Some(port) = machine.turn_off_port {
-            let turn_off_port = port;
-            let remote_ip = machine.ip;
-            let mac = machine.mac.clone();
-            let amount_req = machine.request_rate.max_requests;
-            let per_minutes = machine.request_rate.period_minutes;
-            let mut stop_rx = rx.clone();
-
-            tokio::spawn(async move {
-                let mut count = 0;
-                loop {
-                    tokio::select! {
-                        changed = stop_rx.changed() => {
-                            match changed {
-                                Ok(_) => {
-                                    if !*stop_rx.borrow() {
-                                        debug!(
-                                            "stopping inactivity monitor for machine {} ({})",
-                                            remote_ip, mac
-                                        );
-                                        break;
-                                    }
-                                }
-                                Err(_) => {
-                                    debug!(
-                                        "stopping inactivity monitor for machine {} ({}) because channel closed",
-                                        remote_ip, mac
-                                    );
-                                    break;
-                                }
-                            }
-                        }
-                        _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                            let elapsed = {
-                                let last_time = last_request_time.lock().unwrap();
-                                last_time.elapsed()
-                            };
-                            debug!(
-                                "checking for inactivity for machine {} ({}), elapsed: {:?}, per_minutes: {}, amount_req: {}",
-                                remote_ip, mac, elapsed, per_minutes, amount_req
-                            );
-                            if elapsed > Duration::from_secs(per_minutes as u64 * 60) {
-                                count += 1;
-                                if count >= amount_req {
-                                    if let Err(e) =
-                                        turn_off_remote_machine(&remote_ip.to_string(), turn_off_port).await
-                                    {
-                                        error!("Failed to send turn-off signal: {}", e);
-                                    }
-                                    break;
-                                }
-                            } else {
-                                count = 0;
-                            }
-                        }
-                    }
-                }
-            });
+            if machine.request_rate.max_requests > 0 {
+                Some(TurnOffLimiter::new(&machine, port))
+            } else {
+                info!(
+                    "Machine {} has rate limit disabled (max_requests = 0)",
+                    machine.mac
+                );
+                None
+            }
+        } else {
+            debug!(
+                "Turn off port not configured for {}, skipping rate-based shutdown",
+                machine.mac
+            );
+            None
         }
     } else {
-        info!("Machine {} cannot be turned off automatically.", machine.ip);
-    }
+        info!(
+            "Machine {} cannot be turned off automatically (feature disabled)",
+            machine.mac
+        );
+        None
+    };
 
     loop {
         tokio::select! {
@@ -144,16 +157,33 @@ pub async fn proxy(
                     client_addr, remote_addr
                 );
 
-                if machine.request_rate.max_requests > 0 {
-                    let mut last_time = last_request_time.lock().unwrap();
-                    *last_time = Instant::now();
-                }
-
                 let remote_addr_clone = remote_addr;
                 let mac_str_clone = machine.mac.clone();
+                let rate_limiter = rate_limiter.clone();
 
                 let connection_pool_clone = connection_pool.clone();
                 tokio::spawn(async move {
+                    if let Some(limiter) = rate_limiter.clone() {
+                        if let Some(hit_count) = limiter.record_request() {
+                            let remote_ip = limiter.remote_ip.to_string();
+                            let turn_off_port = limiter.turn_off_port;
+                            let mac = limiter.mac.clone();
+                            let window = limiter.window;
+                            tokio::spawn(async move {
+                                info!(
+                                    "Request limit reached for {}: {} requests within {:?}, sending turn-off signal",
+                                    mac, hit_count, window
+                                );
+                                if let Err(e) = turn_off_remote_machine(&remote_ip, turn_off_port).await {
+                                    error!(
+                                        "Failed to send turn-off signal for {} on {}:{}: {}",
+                                        mac, remote_ip, turn_off_port, e
+                                    );
+                                }
+                            });
+                        }
+                    }
+
                     let connect_timeout = Duration::from_millis(1000);
                     if !wol::tcp_check(remote_addr_clone, connect_timeout) {
                         info!(
@@ -222,6 +252,7 @@ pub async fn proxy(
                         connection_pool_clone.return_connection(remote_addr_clone, outbound).await;
                         debug!("Successfully completed data transfer for {}", remote_addr_clone);
                     }
+
                 });
             }
         }

@@ -2,7 +2,9 @@ use crate::connection_pool::ConnectionPool;
 use anyhow::Result;
 use askama_axum::Template;
 use axum::{
-    extract::{Form, Json as JsonExtract, Query, State},
+    body::Body,
+    extract::{Form, Json as JsonExtract, Path, Query, State},
+    http::{header, Method, Request, Response, StatusCode},
     response::{IntoResponse, Json, Redirect},
     routing::{delete, get, post, put},
     Router,
@@ -20,6 +22,76 @@ use crate::forward;
 use crate::scanner;
 use crate::web::{self, AppState, DeleteForm, Machine, RemoteTurnOffForm, WakeForm};
 use crate::wol;
+use include_dir::{include_dir, Dir};
+use mime_guess::from_path;
+use std::path::{Component, Path as StdPath};
+
+static FRONTEND_DIST: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/frontend/dist");
+
+fn respond_with_file(file: &include_dir::File<'_>) -> Response<Body> {
+    let mime = from_path(file.path()).first_or_octet_stream();
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime.as_ref())
+        .body(Body::from(file.contents().to_vec()))
+        .unwrap()
+}
+
+fn not_found() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn asset_response(path: &str) -> Response<Body> {
+    let trimmed = path.trim_start_matches('/');
+    let target = if trimmed.is_empty() {
+        "index.html"
+    } else {
+        trimmed
+    };
+
+    if StdPath::new(target)
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return not_found();
+    }
+
+    if let Some(file) = FRONTEND_DIST.get_file(target) {
+        return respond_with_file(&file);
+    }
+
+    if !target.contains('.') {
+        if let Some(index) = FRONTEND_DIST.get_file("index.html") {
+            return respond_with_file(&index);
+        }
+    }
+
+    not_found()
+}
+
+async fn serve_index() -> Response<Body> {
+    // if debug build, redirect to vite dev server (localhost:3000)
+    if cfg!(debug_assertions) {
+        return Redirect::to("http://localhost:8080").into_response();
+    }
+    asset_response("")
+}
+
+async fn spa_fallback(req: Request<Body>) -> Response<Body> {
+    match req.method() {
+        &Method::GET | &Method::HEAD => {
+            let mut response = asset_response(req.uri().path());
+            if req.method() == Method::HEAD {
+                *response.body_mut() = Body::empty();
+            }
+            response
+        }
+        _ => not_found(),
+    }
+}
 
 pub async fn start(port: u16) -> Result<()> {
     let initial_machines = web::load_machines().unwrap_or_default();
@@ -79,18 +151,8 @@ pub fn api_routes(state: AppState) -> Router {
 
 pub fn build_router(state: AppState) -> Router {
     Router::new()
-        .route("/", get(show_machines))
-        .route("/scan", get(scan_network_handler))
-        .route("/interfaces", get(list_interfaces_handler))
-        .route("/machines", post(add_machine))
-        .route("/machines/delete", post(delete_machine))
-        .route("/machines/health", post(machine_health))
-        .route("/machines/add-port-forward", post(add_port_forward))
-        .route("/machines/:mac", get(machine_detail))
-        .route("/machines/update-ports", post(update_ports))
-        .route("/machines/update-config", post(update_machine_config))
-        .route("/machines/remote-turn-off", post(turn_off_remote_machine))
-        .route("/wol", post(wake_machine))
+        .route("/", get(serve_index))
+        .fallback(spa_fallback)
         .with_state(state)
 }
 
@@ -130,8 +192,6 @@ async fn list_interfaces_handler() -> impl IntoResponse {
         }
     }
 }
-
-use axum::extract::Path;
 
 async fn machine_detail(
     State(state): State<AppState>,
