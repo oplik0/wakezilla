@@ -443,21 +443,24 @@ fn MachineDetailPage() -> impl IntoView {
                                             "Forward to port {}",
                                             row_number,
                                         );
-
                                         let forward_label = format!("Forward {}", row_number);
+
                                         view! {
                                             <div class="port-forward-item">
                                                 <div class="port-forward-item__header">
-                                                    <span class="port-forward-item__title">{forward_label}</span>
+                                                    <span class="port-forward-item__title">
+                                                        {forward_label}
+                                                    </span>
                                                     <button
                                                         type="button"
                                                         class="btn btn-ghost btn-sm port-forward-item__remove"
                                                         on:click=move |_| {
-                                                            set_port_forwards.update(|pfs| {
-                                                                if idx < pfs.len() {
-                                                                    pfs.remove(idx);
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if idx < pfs.len() {
+                                                                        pfs.remove(idx);
+                                                                    }
+                                                                });
                                                         }
                                                     >
                                                         "Remove"
@@ -482,15 +485,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                                 let input: HtmlInputElement = target.dyn_into().unwrap();
                                                                 let value = input.value();
                                                                 let trimmed = value.trim().is_empty();
-                                                                set_port_forwards.update(|pfs| {
-                                                                    if let Some(pf) = pfs.get_mut(idx) {
-                                                                        pf.name = if trimmed {
-                                                                            None
-                                                                        } else {
-                                                                            Some(value.clone())
-                                                                        };
-                                                                    }
-                                                                });
+                                                                set_port_forwards
+                                                                    .update(|pfs| {
+                                                                        if let Some(pf) = pfs.get_mut(idx) {
+                                                                            pf.name = if trimmed { None } else { Some(value.clone()) };
+                                                                        }
+                                                                    });
                                                             }
                                                         />
                                                     </div>
@@ -515,11 +515,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                                 let input: HtmlInputElement = target.dyn_into().unwrap();
                                                                 let value = input.value();
                                                                 let parsed = value.parse::<u16>().unwrap_or(0);
-                                                                set_port_forwards.update(|pfs| {
-                                                                    if let Some(pf) = pfs.get_mut(idx) {
-                                                                        pf.local_port = parsed;
-                                                                    }
-                                                                });
+                                                                set_port_forwards
+                                                                    .update(|pfs| {
+                                                                        if let Some(pf) = pfs.get_mut(idx) {
+                                                                            pf.local_port = parsed;
+                                                                        }
+                                                                    });
                                                             }
                                                         />
                                                     </div>
@@ -544,11 +545,12 @@ fn MachineDetailPage() -> impl IntoView {
                                                                 let input: HtmlInputElement = target.dyn_into().unwrap();
                                                                 let value = input.value();
                                                                 let parsed = value.parse::<u16>().unwrap_or(0);
-                                                                set_port_forwards.update(|pfs| {
-                                                                    if let Some(pf) = pfs.get_mut(idx) {
-                                                                        pf.target_port = parsed;
-                                                                    }
-                                                                });
+                                                                set_port_forwards
+                                                                    .update(|pfs| {
+                                                                        if let Some(pf) = pfs.get_mut(idx) {
+                                                                            pf.target_port = parsed;
+                                                                        }
+                                                                    });
                                                             }
                                                         />
                                                     </div>
@@ -783,11 +785,20 @@ fn Header(
     view! {
         <div class="section-stack">
             <div class="card scan-card">
-                <header class="card-header">
-                    <h1 class="card-title">"Wakezilla Manager"</h1>
-                    <p class="card-subtitle">
-                        "Wake, manage, and forward to your registered machines."
-                    </p>
+                <header class="card-header card-header--with-logo">
+                    <div class="card-header__text">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <img
+                                src="/images/wakezilla.png"
+                                alt="Wakezilla logo"
+                                class="card-header__logo"
+                            />
+                            <h1 class="">"Wakezilla"</h1>
+                        </div>
+                        <p class="card-subtitle">
+                            "Wake, manage, and forward to your registered machines."
+                        </p>
+                    </div>
                 </header>
                 <form on:submit=on_submit class="scan-grid">
                     <select
@@ -1583,16 +1594,19 @@ fn AddMachine(
                                     view! {
                                         <div class="port-forward-item">
                                             <div class="port-forward-item__header">
-                                                <span class="port-forward-item__title">{format!("Forward {}", row)}</span>
+                                                <span class="port-forward-item__title">
+                                                    {format!("Forward {}", row)}
+                                                </span>
                                                 <button
                                                     type="button"
                                                     class="btn btn-ghost btn-sm port-forward-item__remove"
                                                     on:click=move |_| {
-                                                        set_port_forwards.update(|pfs| {
-                                                            if idx < pfs.len() {
-                                                                pfs.remove(idx);
-                                                            }
-                                                        });
+                                                        set_port_forwards
+                                                            .update(|pfs| {
+                                                                if idx < pfs.len() {
+                                                                    pfs.remove(idx);
+                                                                }
+                                                            });
                                                     }
                                                 >
                                                     "Remove"
@@ -1600,7 +1614,8 @@ fn AddMachine(
                                             </div>
                                             <div class="port-forward-item__grid">
                                                 <div class="field">
-                                                    <label for=name_id.clone()>{format!("Service name {}", row)}</label>
+                                                    <label for=name_id
+                                                        .clone()>{format!("Service name {}", row)}</label>
                                                     <input
                                                         class="input"
                                                         id=name_id
@@ -1617,20 +1632,18 @@ fn AddMachine(
                                                             let input: HtmlInputElement = target.dyn_into().unwrap();
                                                             let value = input.value();
                                                             let trimmed = value.trim().is_empty();
-                                                            set_port_forwards.update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.name = if trimmed {
-                                                                        None
-                                                                    } else {
-                                                                        Some(value.clone())
-                                                                    };
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.name = if trimmed { None } else { Some(value.clone()) };
+                                                                    }
+                                                                });
                                                         }
                                                     />
                                                 </div>
                                                 <div class="field">
-                                                    <label for=local_id.clone()>{format!("Local port {}", row)}</label>
+                                                    <label for=local_id
+                                                        .clone()>{format!("Local port {}", row)}</label>
                                                     <input
                                                         class="input"
                                                         id=local_id
@@ -1649,16 +1662,18 @@ fn AddMachine(
                                                             let target = ev.target().unwrap();
                                                             let input: HtmlInputElement = target.dyn_into().unwrap();
                                                             let parsed = input.value().parse::<u16>().unwrap_or(0);
-                                                            set_port_forwards.update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.local_port = parsed;
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.local_port = parsed;
+                                                                    }
+                                                                });
                                                         }
                                                     />
                                                 </div>
                                                 <div class="field">
-                                                    <label for=target_id.clone()>{format!("Target port {}", row)}</label>
+                                                    <label for=target_id
+                                                        .clone()>{format!("Target port {}", row)}</label>
                                                     <input
                                                         class="input"
                                                         id=target_id
@@ -1677,11 +1692,12 @@ fn AddMachine(
                                                             let target = ev.target().unwrap();
                                                             let input: HtmlInputElement = target.dyn_into().unwrap();
                                                             let parsed = input.value().parse::<u16>().unwrap_or(0);
-                                                            set_port_forwards.update(|pfs| {
-                                                                if let Some(pf) = pfs.get_mut(idx) {
-                                                                    pf.target_port = parsed;
-                                                                }
-                                                            });
+                                                            set_port_forwards
+                                                                .update(|pfs| {
+                                                                    if let Some(pf) = pfs.get_mut(idx) {
+                                                                        pf.target_port = parsed;
+                                                                    }
+                                                                });
                                                         }
                                                     />
                                                 </div>

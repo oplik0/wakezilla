@@ -82,6 +82,42 @@ main.container {
     gap: 0.35rem;
 }
 
+.card-header--with-logo {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.9rem;
+}
+
+@media (max-width: 600px) {
+    .card-header--with-logo {
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+    }
+}
+
+.card-header__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.card-header__logo {
+    width: 96px;
+    height: 78px;
+    object-fit: contain;
+    border-radius: 12px;
+    margin-top: 0.15rem;
+}
+
+@media (max-width: 600px) {
+    .card-header__logo {
+        width: 36px;
+        height: 36px;
+    }
+}
+
 .card-title {
     font-size: clamp(1.15rem, 2vw, 1.45rem);
     font-weight: 600;
