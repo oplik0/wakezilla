@@ -428,12 +428,13 @@ async fn api_wake_machine(Path(mac): Path<String>) -> impl IntoResponse {
 mod tests {
     use super::*;
     use crate::test_support::ENV_LOCK;
-    use axum::body::to_bytes;
-    use axum::extract::Form;
-    use axum::extract::Path;
-    use axum::http::StatusCode;
-    use axum::response::IntoResponse;
-    use axum::Json;
+    use axum::{
+        body::{to_bytes, Body},
+        extract::Path,
+        http::{Method, Request, StatusCode},
+        response::IntoResponse,
+        Json,
+    };
     use std::collections::HashMap;
     use std::io::ErrorKind;
     use std::net::Ipv4Addr;
@@ -491,40 +492,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn machine_detail_returns_not_found_when_missing() {
+    async fn get_machine_details_api_returns_not_found() {
         let state = state_with_machines(vec![]);
-        let response = machine_detail(State(state), Path("AA:BB:CC:DD:EE:FF".to_string()))
-            .await
-            .into_response();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let result =
+            get_machine_details_api(State(state), Path("AA:BB:CC:DD:EE:FF".to_string())).await;
+        let (status, body) = result.expect_err("expected missing machine");
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let json = body.0;
+        assert_eq!(json["error"], "Machine not found");
     }
 
     #[tokio::test]
-    async fn turn_off_remote_machine_handles_missing_machine() {
+    async fn execute_remote_turn_off_handles_missing_machine() {
         let state = state_with_machines(vec![]);
-        let (status, message) = turn_off_remote_machine(
-            State(state),
-            Form(RemoteTurnOffForm {
-                mac: "AA:BB:CC:DD:EE:FF".to_string(),
-            }),
-        )
-        .await;
+        let (status, message) = execute_remote_turn_off(&state, "AA:BB:CC:DD:EE:FF").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert!(message.contains("not found"));
     }
 
     #[tokio::test]
-    async fn turn_off_remote_machine_requires_port() {
+    async fn execute_remote_turn_off_requires_port() {
         let mut machine = sample_machine();
         machine.turn_off_port = None;
         let state = state_with_machines(vec![machine]);
-        let (status, message) = turn_off_remote_machine(
-            State(state),
-            Form(RemoteTurnOffForm {
-                mac: "AA:BB:CC:DD:EE:FF".to_string(),
-            }),
-        )
-        .await;
+        let (status, message) = execute_remote_turn_off(&state, "AA:BB:CC:DD:EE:FF").await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(message.contains("No turn-off port"));
     }
@@ -536,7 +527,6 @@ mod tests {
             api_turn_off_remote_machine(State(state), Path("AA:BB:CC:DD:EE:FF".to_string()))
                 .await
                 .into_response();
-
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         let body_bytes = to_bytes(response.into_body(), usize::MAX)
             .await
@@ -553,7 +543,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_machine_persists_new_entry() {
+    async fn add_machine_api_persists_new_entry() {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
@@ -572,8 +562,10 @@ mod tests {
             port_forwards: None,
         };
 
-        let response = add_machine(State(state.clone()), Form(form)).await;
-        assert_eq!(response.into_response().status(), StatusCode::SEE_OTHER);
+        let response = add_machine_api(State(state.clone()), Json(form))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::CREATED);
 
         let machines = state.machines.read().await;
         assert_eq!(machines.len(), 1);
@@ -584,7 +576,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_machine_returns_errors_for_invalid_payload() {
+    async fn add_machine_api_returns_errors_for_invalid_payload() {
         let state = state_with_machines(vec![]);
         let form = web::AddMachineForm {
             mac: "invalid".to_string(),
@@ -598,13 +590,15 @@ mod tests {
             port_forwards: None,
         };
 
-        let response = add_machine(State(state.clone()), Form(form)).await;
-        assert_eq!(response.into_response().status(), StatusCode::OK);
+        let response = add_machine_api(State(state.clone()), Json(form))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(state.machines.read().await.is_empty());
     }
 
     #[tokio::test]
-    async fn turn_off_remote_machine_sends_request_when_configured() {
+    async fn execute_remote_turn_off_sends_request_when_configured() {
         let listener = match TcpListener::bind("127.0.0.1:0").await {
             Ok(listener) => listener,
             Err(err) if err.kind() == ErrorKind::PermissionDenied => {
@@ -640,13 +634,7 @@ mod tests {
         machine.ip = addr.ip().to_string().parse().unwrap();
         let state = state_with_machines(vec![machine]);
 
-        let (status, message) = turn_off_remote_machine(
-            State(state),
-            Form(RemoteTurnOffForm {
-                mac: "AA:BB:CC:DD:EE:FF".to_string(),
-            }),
-        )
-        .await;
+        let (status, message) = execute_remote_turn_off(&state, "AA:BB:CC:DD:EE:FF").await;
 
         assert_eq!(status, StatusCode::OK);
         assert!(message.contains("Sent turn-off request"));
@@ -659,11 +647,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wake_machine_rejects_invalid_mac() {
-        let (status, message) = wake_machine(Form(WakeForm {
-            mac: "invalid".to_string(),
-        }))
-        .await;
+    async fn execute_wake_rejects_invalid_mac() {
+        let (status, message) = execute_wake("invalid").await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(message.contains("Invalid MAC address"));
     }
@@ -687,117 +672,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn machine_health_reports_unknown_without_port() {
-        let Json(value) = machine_health(Json(MachineHealthRequest {
-            ip: "127.0.0.1".to_string(),
-            turn_off_port: None,
-        }))
-        .await;
-        assert_eq!(value["status"], "unknown");
-    }
-
-    #[tokio::test]
-    async fn machine_health_reports_offline_with_error_status() {
-        let listener = match TcpListener::bind("127.0.0.1:0").await {
-            Ok(listener) => listener,
-            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-                eprintln!(
-                    "skipping machine_health_reports_offline_with_error_status: {}",
-                    err
-                );
-                return;
-            }
-            Err(err) => panic!("failed to bind listener: {err}"),
-        };
-        let addr = listener.local_addr().expect("failed to read listener addr");
-
-        tokio::spawn(async move {
-            if let Ok((mut socket, _)) = listener.accept().await {
-                let mut buf = vec![0u8; 1024];
-                let _ = socket.read(&mut buf).await;
-                let _ = socket
-                    .write_all(b"HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Length: 0\r\n\r\n")
-                    .await;
-            }
-        });
-
-        let Json(value) = machine_health(Json(MachineHealthRequest {
-            ip: addr.ip().to_string(),
-            turn_off_port: Some(addr.port()),
-        }))
-        .await;
-
-        assert_eq!(value["status"], "offline");
-        assert_eq!(value["http_status"], 500);
-    }
-
-    #[tokio::test]
-    async fn machine_health_reports_online_with_successful_response() {
-        let listener = match TcpListener::bind("127.0.0.1:0").await {
-            Ok(listener) => listener,
-            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-                eprintln!(
-                    "skipping machine_health_reports_online_with_successful_response: {}",
-                    err
-                );
-                return;
-            }
-            Err(err) => panic!("failed to bind listener: {err}"),
-        };
-        let addr = listener.local_addr().expect("failed to read listener addr");
-
-        tokio::spawn(async move {
-            if let Ok((mut socket, _)) = listener.accept().await {
-                let mut buf = vec![0u8; 1024];
-                let _ = socket.read(&mut buf).await;
-                let _ = socket
-                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
-                    .await;
-            }
-        });
-
-        let Json(value) = machine_health(Json(MachineHealthRequest {
-            ip: addr.ip().to_string(),
-            turn_off_port: Some(addr.port()),
-        }))
-        .await;
-
-        assert_eq!(value["status"], "online");
-        assert_eq!(value["http_status"], 200);
-    }
-
-    #[tokio::test]
-    async fn update_machine_config_applies_changes() {
+    async fn update_machine_api_applies_changes() {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
         let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
 
         let state = state_with_machines(vec![sample_machine()]);
-        let mut payload = HashMap::new();
-        payload.insert("mac".to_string(), "AA:BB:CC:DD:EE:FF".to_string());
-        payload.insert("name".to_string(), "Updated".to_string());
-        payload.insert("description".to_string(), "New description".to_string());
-        payload.insert("can_be_turned_off".to_string(), "true".to_string());
-        payload.insert("requests_per_hour".to_string(), "15".to_string());
-        payload.insert("period_minutes".to_string(), "5".to_string());
-        payload.insert("turn_off_port".to_string(), "8080".to_string());
+        let payload = web::MachinePayload {
+            mac: "AA:BB:CC:DD:EE:FF".to_string(),
+            ip: "10.0.0.2".to_string(),
+            name: "Updated".to_string(),
+            description: Some("New description".to_string()),
+            turn_off_port: Some(9090),
+            can_be_turned_off: true,
+            requests_per_hour: Some(42),
+            period_minutes: Some(12),
+            port_forwards: Some(vec![]),
+        };
 
-        let response = update_machine_config(State(state.clone()), Form(payload)).await;
-        assert_eq!(response.into_response().status(), StatusCode::SEE_OTHER);
+        let response = update_machine_api(
+            State(state.clone()),
+            Path("AA:BB:CC:DD:EE:FF".to_string()),
+            Json(payload),
+        )
+        .await
+        .expect("update should succeed")
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
 
         let machines = state.machines.read().await;
         let updated = machines.first().expect("machine should exist");
         assert_eq!(updated.name, "Updated");
         assert_eq!(updated.description.as_deref(), Some("New description"));
         assert!(updated.can_be_turned_off);
-        assert_eq!(updated.request_rate.max_requests, 15);
-        assert_eq!(updated.request_rate.period_minutes, 5);
-        assert_eq!(updated.turn_off_port, Some(8080));
+        assert_eq!(updated.request_rate.max_requests, 42);
+        assert_eq!(updated.request_rate.period_minutes, 12);
+        assert_eq!(updated.turn_off_port, Some(9090));
+        assert_eq!(updated.ip, Ipv4Addr::new(10, 0, 0, 2));
     }
 
     #[tokio::test]
-    async fn delete_machine_stops_proxy_and_removes_machine() {
+    async fn delete_machine_api_stops_proxy_and_removes_machine() {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
@@ -812,60 +728,48 @@ mod tests {
             proxies.insert(format!("{}-proxy", machine.mac), tx);
         }
 
-        let redirect = delete_machine(
+        let response = delete_machine_api(
             State(state.clone()),
-            Form(DeleteForm {
+            Json(DeleteForm {
                 mac: machine.mac.clone(),
             }),
         )
-        .await;
-        let response = redirect.into_response();
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            response
-                .headers()
-                .get(axum::http::header::LOCATION)
-                .and_then(|value| value.to_str().ok()),
-            Some("/")
-        );
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
 
         assert!(state.machines.read().await.is_empty());
         assert!(state.proxies.read().await.is_empty());
     }
 
     #[tokio::test]
-    async fn update_ports_removes_marked_entries() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        let tmp_dir = tempdir().expect("failed to create temp dir");
-        let file_path = tmp_dir.path().join("machines.json");
-        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+    async fn spa_fallback_serves_index_for_client_routes() {
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/dashboard/settings")
+            .body(Body::empty())
+            .unwrap();
 
-        let mut machine = sample_machine();
-        machine.port_forwards = vec![web::PortForward {
-            name: "SSH".to_string(),
-            local_port: 22,
-            target_port: 22,
-        }];
-        let state = state_with_machines(vec![machine.clone()]);
+        let response = spa_fallback(request).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers().clone();
+        assert_eq!(
+            headers
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("text/html")
+        );
+    }
 
-        {
-            let mut proxies = state.proxies.write().await;
-            let (tx, _rx) = watch::channel(true);
-            proxies.insert(format!("{}-ssh", machine.mac), tx);
-        }
+    #[tokio::test]
+    async fn spa_fallback_returns_not_found_for_post_requests() {
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/dashboard/settings")
+            .body(Body::empty())
+            .unwrap();
 
-        let mut payload = HashMap::new();
-        payload.insert("mac".to_string(), machine.mac.clone());
-        payload.insert("pf_name_0".to_string(), "SSH".to_string());
-        payload.insert("pf_local_0".to_string(), "22".to_string());
-        payload.insert("pf_target_0".to_string(), "22".to_string());
-        payload.insert("pf_remove_0".to_string(), "on".to_string());
-
-        let response = update_ports(State(state.clone()), Form(payload)).await;
-        assert_eq!(response.into_response().status(), StatusCode::SEE_OTHER);
-
-        let machines = state.machines.read().await;
-        assert!(machines[0].port_forwards.is_empty());
-        assert!(state.proxies.read().await.is_empty());
+        let response = spa_fallback(request).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }
