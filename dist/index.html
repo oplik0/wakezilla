@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wakezilla</title>
+  <link rel="stylesheet" href="/main-a7f8513540d3ad1b.css" integrity="sha384-3m20oDeMDP69tYXctM0jhsb8ttBkp0nK0EA/9obxJkjaa0roSACYffEooKSIWyhf"/>
+  
+  <link rel="icon" href="/favicon-e15b26d9b5b6056c.ico" integrity="sha384-dLaXtKEn7C+jpPj6zWrI3VKiRSCg5ADfx9xtVXnd4VBs+DPlUYUoSl/3wd06OO2K"/>
+<link rel="modulepreload" href="/wakezilla-frontend-cf35daf47136ec3a.js" crossorigin="anonymous" integrity="sha384-BpCTf5XC4cywOoxPkzockLWJKGsaEVhAcnvdgYMKbzeTo/6EaLDVvU6PZJEBW347"><link rel="preload" href="/wakezilla-frontend-cf35daf47136ec3a_bg.wasm" crossorigin="anonymous" integrity="sha384-VL27r4NhBm8IRvGZuhesz+I8UO4FMA2qvD0yNuxwQd8FF3hLE8Fe19QdeJMYYyHR" as="fetch" type="application/wasm"></head>
+
+<body>
+<script type="module">
+import init, * as bindings from '/wakezilla-frontend-cf35daf47136ec3a.js';
+const wasm = await init({ module_or_path: '/wakezilla-frontend-cf35daf47136ec3a_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script></body>
+
+</html>
