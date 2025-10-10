@@ -19,3 +19,8 @@ install:
 	$(MAKE) build
 	sudo cp target/release/wakezilla /usr/local/bin/wakezilla && \
 	echo "Installation complete."
+
+release:
+	$(MAKE) dependencies
+	$(MAKE) build
+	cargo publish 
