@@ -21,6 +21,12 @@
 
 ## Installation
 
+### Install from cargo (recommended)
+
+```bash
+cargo install wakezilla
+```
+    
 ### Install from source
 
 1. **Install Rust**:

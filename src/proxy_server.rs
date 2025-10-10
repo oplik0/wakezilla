@@ -25,7 +25,7 @@ use include_dir::{include_dir, Dir};
 use mime_guess::from_path;
 use std::path::{Component, Path as StdPath};
 
-static FRONTEND_DIST: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/frontend/dist");
+static FRONTEND_DIST: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/dist");
 
 fn respond_with_file(file: &include_dir::File<'_>) -> Response<Body> {
     let mime = from_path(file.path()).first_or_octet_stream();
