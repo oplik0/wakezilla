@@ -144,6 +144,7 @@ pub fn api_routes(state: AppState) -> Router {
             post(api_turn_off_remote_machine),
         )
         .route("/api/machines/:mac/wake", post(api_wake_machine))
+        .route("/api/machines/:mac/is-on", get(is_machine_on_api))
         .route("/api/machines/delete", delete(delete_machine_api))
         .with_state(state)
 }
@@ -163,6 +164,42 @@ async fn scan_network_handler(Query(params): Query<HashMap<String, String>>) -> 
             error!("Network scan failed: {}", e);
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
+    }
+}
+
+async fn is_machine_on_api(
+    State(state): State<AppState>,
+    Path(mac): Path<String>,
+) -> impl IntoResponse {
+    let machines = state.machines.read().await;
+    if let Some(machine) = machines.iter().find(|m| m.mac == mac) {
+        let url = format!(
+            "http://{}:{}/health",
+            machine.ip,
+            machine.turn_off_port.unwrap_or(3000)
+        );
+        let response = reqwest::get(&url).await;
+        match response {
+            Ok(res) => {
+                if res.status() == 200 {
+                    Ok((
+                        axum::http::StatusCode::OK,
+                        Json(serde_json::json!({ "is_on": true })),
+                    ))
+                } else {
+                    Ok((
+                        axum::http::StatusCode::OK,
+                        Json(serde_json::json!({ "is_on": false })),
+                    ))
+                }
+            }
+            Err(e) => {
+                info!("Network error for machine {}: {}", machine.name, e);
+                return Err(axum::http::StatusCode::NOT_FOUND);
+            }
+        }
+    } else {
+        Err(axum::http::StatusCode::NOT_FOUND)
     }
 }
 

@@ -1821,7 +1821,7 @@ fn HomePage() -> impl IntoView {
     Effect::new(move |_| {
         let machines = registred_machines.get();
         if machines.is_empty() {
-            console_log("No registred machines");
+            // console_log("No registred machines");
             return;
         }
 
@@ -1835,7 +1835,7 @@ fn HomePage() -> impl IntoView {
                 let machine_name = m.name.clone();
 
                 console_log(&format!("Checking machine {}", machine_name));
-                let future = async move { (machine_mac, is_machine_online(&m).await) };
+                let future = async move { (machine_mac, is_machine_online(&m.mac).await) };
                 futures.push(future);
             }
 

@@ -151,21 +151,23 @@ pub async fn wake_machine(mac: &str) -> Result<String, String> {
     }
 }
 
-pub async fn is_machine_online(machine: &Machine) -> bool {
-    let url = format!(
-        "http://{}:{}/health",
-        machine.ip,
-        machine.turn_off_port.unwrap_or(3000)
-    );
-    let response = Request::get(&url).send().await;
-    match response {
-        Ok(res) => res.status() == 200,
-        Err(e) => {
-            console_log(&format!(
-                "Network error for machine {}: {}",
-                machine.name, e
-            ));
-            false // Mark as offline on network errors
-        }
+pub async fn is_machine_online(mac: &str) -> bool {
+    let api_base = get_api_base();
+    let response = Request::get(&format!("{}/machines/{}/is-on", api_base, mac))
+        .send()
+        .await
+        .map_err(|e| e.to_string());
+
+    if response.is_err() {
+        console_log(&format!(
+            "Error checking if machine is online: {}",
+            response.err().unwrap()
+        ));
+        return false;
+    }
+    let response = response.unwrap();
+    match response.status() {
+        200 => true,
+        _ => false,
     }
 }
