@@ -1,5 +1,5 @@
 [package]
-name = "pos-frontend"
+name = "wakezilla-frontend"
 version = "0.1.0"
 edition = "2024"
 
@@ -24,6 +24,12 @@ futures = "0.3"
 libc = "0.2"
 
 [profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+
+[profile.wasm-release]
+inherits = "release"
 opt-level = 'z'
 lto = true
 codegen-units = 1
