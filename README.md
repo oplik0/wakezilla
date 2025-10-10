@@ -9,7 +9,7 @@
 
 
 ## Web interface
-<img width="2698" height="2012" alt="image" src="https://github.com/user-attachments/assets/667eedeb-431c-4aa2-bf7a-3eadd4221452" />
+<img width="531" height="727" alt="image" src="https://github.com/user-attachments/assets/e9e744c4-35ec-4ca0-8de2-696e447cce7a" />
 
 ## Features
 
