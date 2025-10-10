@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -35,9 +36,12 @@ use crate::forward;
 const DEFAULT_DB_PATH: &str = "machines.json";
 
 fn machines_db_path() -> PathBuf {
+    let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
+    let executable_dir = executable_path.parent().unwrap_or_else(|| Path::new("."));
+    let default_path = executable_dir.join(DEFAULT_DB_PATH);
     std::env::var("WAKEZILLA_MACHINES_DB_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_DB_PATH))
+        .unwrap_or_else(|_| default_path)
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -66,26 +70,8 @@ pub struct PortForward {
 }
 
 #[derive(Deserialize)]
-pub struct WakeForm {
-    pub mac: String,
-}
-
-#[derive(Deserialize)]
 pub struct DeleteForm {
     pub mac: String,
-}
-
-#[derive(Deserialize)]
-pub struct RemoteTurnOffForm {
-    pub mac: String,
-}
-
-#[derive(Deserialize)]
-pub struct AddPortForwardForm {
-    pub mac: String,
-    pub name: String,
-    pub local_port: u16,
-    pub target_port: u16,
 }
 
 fn validate_ip(ip: &str) -> Result<(), ValidationError> {
@@ -119,6 +105,23 @@ pub struct AddMachineForm {
     pub can_be_turned_off: bool,
     pub requests_per_hour: Option<u32>,
     pub period_minutes: Option<u32>,
+    pub port_forwards: Option<Vec<PortForward>>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct MachinePayload {
+    #[validate(custom(function = "validate_mac"))]
+    pub mac: String,
+    #[validate(custom(function = "validate_ip"))]
+    pub ip: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub turn_off_port: Option<u16>,
+    #[serde(default = "default_can_be_turned_off")]
+    pub can_be_turned_off: bool,
+    pub requests_per_hour: Option<u32>,
+    pub period_minutes: Option<u32>,
+    pub port_forwards: Option<Vec<PortForward>>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -175,6 +178,7 @@ pub fn save_machines(machines: &[Machine]) -> Result<()> {
     let data =
         serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
     let path = machines_db_path();
+    info!("Saving machines database to {}", path.display());
     fs::write(&path, data)
         .with_context(|| format!("Failed to write machines database to {}", path.display()))
 }

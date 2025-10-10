@@ -21,7 +21,7 @@
 
 ## Installation
 
-### Server Installation
+### Install from source
 
 1. **Install Rust**:
    ```bash
@@ -29,61 +29,39 @@
    source $HOME/.cargo/env
    ```
 
-2. **Clone and Build**:
+2. **Build and Install**:
    ```bash
-   git clone <repository-url>
+   git clone git@github.com:guibeira/wakezilla.git
    cd wakezilla
-   cargo build --release
+   make install
    ```
 
-3. **Configure the Server**:
-   Create a `machines.json` file (optional, will be created automatically):
-   ```json
-   []
-   ```
-
-4. **Run the Server**:
+3. **Verify Installation**:
    ```bash
-   ./target/release/wakezilla --server
+   wakezilla --version
+   ```
+### Run proxy server 
+
+1. **Run the Server**:
+   ```bash
+    wakezilla proxy-server
    ```
    
    By default, the web interface runs on port 3000.
 
-### Client Installation
-   make sure the machine was configured with wake on lan.
-1. **Install Rust** (if not already installed):
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source $HOME/.cargo/env
-   ```
+### Run Client 
 
-2. **Clone and Build**:
+1. **Run the Server**:
    ```bash
-   git clone <repository-url>
-   cd wakezilla
-   cargo build --release
+    wakezilla client-server
    ```
+   
+   By default, the web interface runs on port 3001.
+   You can check the health of the client server by visiting:
+   http://<client-ip>:3001/health
+
+
 ## Usage
-
-### Starting the Proxy Server
-```bash
-# Basic server start
-./target/release/wakezilla proxy-server
-
-# With custom port
-./target/release/wakezilla proxy-server --port 8080
-
-```
-
-### Starting the Client
-```bash
-# Connect to server
-./target/release/wakezilla client-server 
-
-# With custom port
-./target/release/wakezilla client-server --port 8080
-
-```
 
 ### Web Interface
 Access the web interface at `http://<server-ip>:3000` to:
@@ -149,6 +127,25 @@ Each machine can be configured with:
 - The server should be run on a trusted network
 - Access to the web interface should be restricted if exposed to the internet
 - The turn-off endpoint on clients should only be accessible from the server
+
+## Development
+### Prerequisites
+- Rust and Cargo installed
+- Clone the repository
+- Install dependencies with `make dependencies`
+
+on frontend folder run:
+```bash
+trunk serve
+```
+this will initialize the frontend in watch mode on port 8080
+
+on the root folder run:
+```bash
+cargo watch -x 'run -- proxy-server'
+```
+this will initialize the backend in watch mode on port 3000
+
 
 ## Troubleshooting
 

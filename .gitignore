@@ -1,2 +1,4 @@
 /target
+frontend/target
+frontend/dist
 machines.json

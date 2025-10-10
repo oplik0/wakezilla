@@ -13,8 +13,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔧 Setup Rust toolchain (stable)
-        run: rustup toolchain install stable --profile minimal
+      - name: 🔧 Setup Rust toolchain (nightly) and wasm target
+        run: rustup toolchain install nightly --allow-downgrade
+
+      - name: Setup Rust toolchain and wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install Trunk
+        run: cargo install trunk
 
       - name: ⚡ Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
