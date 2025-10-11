@@ -21,6 +21,5 @@ install:
 	echo "Installation complete."
 
 release:
-	$(MAKE) dependencies
 	$(MAKE) build
 	cargo publish 
