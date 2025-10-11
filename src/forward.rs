@@ -242,15 +242,26 @@ pub async fn proxy(
                         }
                     };
 
-                    if let Err(e) = copy_bidirectional(&mut inbound, &mut outbound).await {
-                        connection_pool_clone.return_connection(remote_addr_clone, outbound).await;
-                        warn!(
-                            "Error forwarding data between {} and {}: {}",
-                            client_addr, remote_addr_clone, e
-                        );
-                    } else {
-                        connection_pool_clone.return_connection(remote_addr_clone, outbound).await;
-                        debug!("Successfully completed data transfer for {}", remote_addr_clone);
+                    match copy_bidirectional(&mut inbound, &mut outbound).await {
+                        Ok(_) => {
+                            // Most targets close the connection after each request.
+                            // Drop the stream instead of reusing a socket that is very
+                            // likely already shut down by the remote endpoint.
+                            drop(outbound);
+                            debug!(
+                                "Completed data transfer for {} (connection closed)",
+                                remote_addr_clone
+                            );
+                        }
+                        Err(e) => {
+                            // Drop the broken connection so it isn't re-used from the pool.
+                            drop(outbound);
+                            connection_pool_clone.remove_target(remote_addr_clone).await;
+                            warn!(
+                                "Error forwarding data between {} and {}: {}",
+                                client_addr, remote_addr_clone, e
+                            );
+                        }
                     }
 
                 });
