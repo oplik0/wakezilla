@@ -195,7 +195,7 @@ async fn is_machine_on_api(
             }
             Err(e) => {
                 info!("Network error for machine {}: {}", machine.name, e);
-                return Err(axum::http::StatusCode::NOT_FOUND);
+                Err(axum::http::StatusCode::NOT_FOUND)
             }
         }
     } else {
