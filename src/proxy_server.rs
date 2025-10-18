@@ -158,7 +158,7 @@ pub fn build_router(state: AppState) -> Router {
 
 async fn scan_network_handler(Query(params): Query<HashMap<String, String>>) -> impl IntoResponse {
     let interface = params.get("interface").map(|s| s.as_str());
-    match scanner::scan_network_with_interface(interface).await {
+    match scanner::NetworkInterface::scan_network_with_interface(interface).await {
         Ok(devices) => Ok(Json(devices)),
         Err(e) => {
             error!("Network scan failed: {}", e);
@@ -204,7 +204,7 @@ async fn is_machine_on_api(
 }
 
 async fn list_interfaces_handler() -> impl IntoResponse {
-    match scanner::list_interfaces().await {
+    match scanner::NetworkInterface::list_interfaces().await {
         Ok(interfaces) => Ok(Json(interfaces)),
         Err(e) => {
             error!("Failed to list interfaces: {}", e);

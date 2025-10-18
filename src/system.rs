@@ -13,24 +13,20 @@ pub fn get_local_mac_addresses() -> Vec<String> {
 #[allow(dead_code)]
 pub fn shutdown_machine() {
     warn!("SHUTTING DOWN THE MACHINE IN 5 SECONDS!");
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(5));
 
-    let status = if cfg!(target_os = "windows") {
-        Command::new("shutdown").args(["/s", "/t", "0"]).status()
-    } else {
-        Command::new("shutdown").args(["-h", "now"]).status()
-    };
-
-    match status {
-        Ok(status) => {
-            if !status.success() {
-                warn!("Shutdown command failed with status: {}", status);
-            }
+        let status = if cfg!(target_os = "windows") {
+            Command::new("shutdown").args(["/s", "/t", "0"]).status()
+        } else {
+            Command::new("shutdown").args(["-h", "now"]).status()
+        };
+        match status {
+            Ok(s) if s.success() => (),
+            Ok(s) => warn!("Shutdown command exited with status: {}", s),
+            Err(e) => warn!("Failed to execute shutdown command: {}", e),
         }
-        Err(e) => {
-            warn!("Failed to execute shutdown command: {}", e);
-        }
-    }
+    });
 }
 
 #[cfg(test)]
