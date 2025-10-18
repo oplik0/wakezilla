@@ -73,6 +73,25 @@ impl ConnectionPool {
         }
     }
 
+    /// Return a connection to the pool for future reuse
+    pub async fn return_connection(&self, target_addr: SocketAddr, stream: TcpStream) {
+        let mut pools = self.pools.write().await;
+        let pool = pools.entry(target_addr).or_insert_with(VecDeque::new);
+
+        if pool.len() >= MAX_CONNECTIONS_PER_TARGET {
+            debug!(
+                "Connection pool for {} is full, dropping returned connection",
+                target_addr
+            );
+            return;
+        }
+
+        pool.push_back(PooledConnection {
+            stream,
+            last_used: Instant::now(),
+        });
+    }
+
     /// Get a connection from the pool, or create a new one if needed
     pub async fn get_connection(
         &self,
