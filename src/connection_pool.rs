@@ -34,14 +34,6 @@ struct PooledConnection {
 }
 
 impl PooledConnection {
-    fn new(stream: TcpStream) -> Self {
-        let now = Instant::now();
-        Self {
-            stream,
-            last_used: now,
-        }
-    }
-
     fn is_expired(&self) -> bool {
         self.last_used.elapsed() > Duration::from_secs(CONNECTION_IDLE_TIMEOUT)
     }
@@ -147,30 +139,6 @@ impl ConnectionPool {
         }
 
         None
-    }
-
-    /// Return a connection to the pool for reuse
-    pub async fn return_connection(&self, target_addr: SocketAddr, stream: TcpStream) {
-        let mut pools = self.pools.write().await;
-
-        let pool = pools.entry(target_addr).or_insert_with(VecDeque::new);
-
-        // Only add back to the pool if we're not over the per-target limit
-        if pool.len() < MAX_CONNECTIONS_PER_TARGET {
-            let pooled_conn = PooledConnection::new(stream);
-            pool.push_back(pooled_conn);
-            debug!(
-                "Returned connection to pool for {}, pool size: {}",
-                target_addr,
-                pool.len()
-            );
-        } else {
-            debug!(
-                "Pool for {} already full ({} connections), not adding back",
-                target_addr,
-                pool.len()
-            );
-        }
     }
 
     /// Remove all connections for a specific target (e.g., when a machine is deleted)
