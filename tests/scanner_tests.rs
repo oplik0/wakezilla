@@ -1,5 +1,5 @@
 #![cfg(test)]
-use wakezilla::scanner::{scan_network_with_interface, DiscoveredDevice};
+use wakezilla::scanner::{DiscoveredDevice, NetworkInterface};
 
 #[test]
 fn discovered_device_serialize() {
@@ -15,7 +15,7 @@ fn discovered_device_serialize() {
 #[tokio::test]
 async fn test_scan_network_basic() {
     // This test triggers the network interface detection code
-    let result = scan_network_with_interface(None).await;
+    let result = NetworkInterface::scan_network_with_interface(None).await;
     // It will likely fail due to no root privileges, but some code paths are exercised
     match &result {
         Ok(devices) => println!("Unexpectedly succeeded: found {} devices", devices.len()),
