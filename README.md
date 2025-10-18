@@ -1,4 +1,5 @@
 # Wakezilla 🦖
+![Crates.io Version](https://img.shields.io/crates/v/wakezilla) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Run Tests](https://github.com/guibeira/datastore-emulator/actions/workflows/ci.yml/badge.svg)](https://github.com/guibeira/datastore-emulator/actions/workflows/ci.yml)
 <img width="200" height="159" src="https://github.com/user-attachments/assets/e88f084b-47b8-467b-a5c6-d64327805792" align="left" alt="wakezilla"/>
 
 ⚡ Wake-on-LAN made simple → power on your machines remotely whenever needed.
@@ -6,6 +7,7 @@
 🌐 Reverse proxy → intercepts traffic and wakes the server automatically if it’s offline.
 
 🔌 Automatic shutdown → saves energy by powering down idle machines after configurable thresholds.
+
 
 
 ## Web interface
