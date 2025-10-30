@@ -6,14 +6,20 @@
     flake-utils.url = "github:numtide/flake-utils";
     crane = {
       url = "github:ipetkov/crane";
+    };
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, crane }:
+  outputs = { self, nixpkgs, flake-utils, crane, rust-overlay }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
         wakezilla-pkg = import ./pkgs/wakezilla { inherit pkgs crane; };
       in
       {
@@ -33,7 +39,10 @@
               rustc
               clippy
               rustfmt
-              (rust-analyzer.override { extensions = [ "rust-analyzer" ]; })
+              rust-analyzer
+              trunk
+              pkg-config
+              openssl
             ];
             RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
           };
