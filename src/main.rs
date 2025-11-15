@@ -120,8 +120,8 @@ async fn main() -> Result<()> {
     });
 
     info!(
-        "Using configuration: server_proxy_port={}, server_client_port={}, wol_default_port={}",
-        config.server.proxy_port, config.server.client_port, config.wol.default_port
+        "Using configuration: server_proxy_port={}, server_client_port={}, wol_default_port={}, machines_db_path={}",
+        config.server.proxy_port, config.server.client_port, config.wol.default_port, config.storage.machines_db_path
     );
 
     let cli = Cli::parse();

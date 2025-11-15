@@ -39,7 +39,7 @@ fn machines_db_path() -> PathBuf {
     let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
     let executable_dir = executable_path.parent().unwrap_or_else(|| Path::new("."));
     let default_path = executable_dir.join(DEFAULT_DB_PATH);
-    std::env::var("WAKEZILLA_MACHINES_DB_PATH")
+    std::env::var("WAKEZILLA__STORAGE__MACHINES_DB_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|_| default_path)
 }
@@ -305,7 +305,7 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
-        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+        let _guard = EnvGuard::set_path("WAKEZILLA__STORAGE__MACHINES_DB_PATH", &file_path);
 
         let machines = vec![Machine {
             mac: "AA:BB:CC:DD:EE:FF".to_string(),

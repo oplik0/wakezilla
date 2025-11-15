@@ -584,7 +584,7 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
-        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+        let _guard = EnvGuard::set_path("WAKEZILLA__STORAGE__MACHINES_DB_PATH", &file_path);
 
         let state = state_with_machines(vec![]);
         let form = web::AddMachineForm {
@@ -713,7 +713,7 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
-        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+        let _guard = EnvGuard::set_path("WAKEZILLA__STORAGE__MACHINES_DB_PATH", &file_path);
 
         let state = state_with_machines(vec![sample_machine()]);
         let payload = web::MachinePayload {
@@ -754,7 +754,7 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
-        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+        let _guard = EnvGuard::set_path("WAKEZILLA__STORAGE__MACHINES_DB_PATH", &file_path);
 
         let machine = sample_machine();
         let state = state_with_machines(vec![machine.clone()]);

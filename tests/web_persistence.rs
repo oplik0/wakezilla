@@ -22,7 +22,7 @@ fn save_and_load_machines_round_trip() {
     let temp_dir = tempfile::tempdir().expect("failed to create temp directory");
     let db_path = temp_dir.path().join("machines.json");
     let _guard = EnvGuard::set(
-        "WAKEZILLA_MACHINES_DB_PATH",
+        "WAKEZILLA__STORAGE__MACHINES_DB_PATH",
         db_path.to_str().expect("temp path should be valid utf-8"),
     );
 
