@@ -29,32 +29,27 @@
 cargo install wakezilla
 ```
 
-### Build Docker image
+### Using pre-built docker image
 
-1. **Build the Docker image**:
-```bash
-docker build -t wakezilla .
-```
-
-2. **Run the proxy server**:
+1. **Run the proxy server**:
 ```bash
 docker run -d \
  --name wakezilla-proxy \
  --network host \
  -e WAKEZILLA__SERVER__PROXY_PORT=3000 \
  -v ${PWD}/wakezilla-data:/opt/wakezilla \
- wakezilla proxy-server
+ guibeira/wakezilla:latest proxy-server
 ```
 Note:
 - `--network host` is required for Wake-on-LAN to work properly.
 - add `-v ${PWD}/wakezilla-data:/opt/wakezilla` to save configuration data persistently.
 
-3. **Run the client server**:
+2. **Run the client server**:
 ```bash
 docker run -d \
  --name wakezilla-client \
  -p 3001:3001 \
- wakezilla:latest client-server
+ guibeira/wakezilla:latest client-server
 ```
 
 ### Install from source
