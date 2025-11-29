@@ -3,9 +3,9 @@ dependencies:
 	echo "Installing nightly toolchain if not already installed..." && \
 	rustup toolchain install nightly --allow-downgrade && \
 	echo "Installing wasm32 target..." && \
-	rustup target add wasm32-unknown-unknown
+	rustup target add wasm32-unknown-unknown && \
 	echo "Installing trunk..." && \
-	cargo install trunk
+	cargo install trunk --locked
 
 build:
 	echo "Building frontend and backend..." && \
@@ -22,4 +22,4 @@ install:
 
 release:
 	$(MAKE) build
-	cargo publish 
+	cargo publish

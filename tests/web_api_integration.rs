@@ -31,7 +31,7 @@ impl Drop for EnvVarGuard {
 fn setup_state(temp_dir: &TempDir) -> (AppState, EnvVarGuard) {
     let db_path = temp_dir.path().join("machines.json");
     let guard = EnvVarGuard::set(
-        "WAKEZILLA_MACHINES_DB_PATH",
+        "WAKEZILLA__STORAGE__MACHINES_DB_PATH",
         db_path.to_str().expect("temp path should be valid utf-8"),
     );
 
