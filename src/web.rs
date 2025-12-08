@@ -36,12 +36,16 @@ use crate::forward;
 const DEFAULT_DB_PATH: &str = "machines.json";
 
 fn machines_db_path() -> PathBuf {
-    let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    let executable_dir = executable_path.parent().unwrap_or_else(|| Path::new("."));
-    let default_path = executable_dir.join(DEFAULT_DB_PATH);
-    std::env::var("WAKEZILLA__STORAGE__MACHINES_DB_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| default_path)
+    // First check for environment variable override
+    if let Ok(path) = std::env::var("WAKEZILLA__STORAGE__MACHINES_DB_PATH") {
+        return PathBuf::from(path);
+    }
+    
+    // Use current working directory as default (not executable directory)
+    // This ensures the file is saved/loaded from where the user runs the command
+    env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DEFAULT_DB_PATH)
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
