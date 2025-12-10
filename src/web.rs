@@ -40,7 +40,7 @@ fn machines_db_path() -> PathBuf {
     if let Ok(path) = std::env::var("WAKEZILLA__STORAGE__MACHINES_DB_PATH") {
         return PathBuf::from(path);
     }
-    
+
     // Use current working directory as default (not executable directory)
     // This ensures the file is saved/loaded from where the user runs the command
     env::current_dir()
@@ -179,6 +179,7 @@ pub fn load_machines_from_path<P: AsRef<Path>>(path: P) -> Result<Vec<Machine>> 
 }
 
 pub fn save_machines(machines: &[Machine]) -> Result<()> {
+    tracing::debug!("Saving machines {:?}", machines);
     let data =
         serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
     let path = machines_db_path();

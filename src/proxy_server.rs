@@ -316,6 +316,7 @@ async fn update_machine_api(
         port_forwards: payload.port_forwards.clone().unwrap_or_default(),
     };
 
+    machines.push(new_machine.clone());
     if let Err(e) = web::save_machines(&machines) {
         error!("Error saving machines: {}", e);
         return Err((
@@ -326,7 +327,6 @@ async fn update_machine_api(
 
     // Restart proxy if needed
     web::start_proxy_if_configured(&new_machine, &state);
-    machines.push(new_machine);
 
     Ok(Json(serde_json::json!({ "status": "Machine updated" })))
 }
