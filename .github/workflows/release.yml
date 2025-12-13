@@ -22,10 +22,6 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: wakezilla-macos-arm64
             archive_type: tar.gz
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact_name: wakezilla-windows-x86_64
-            archive_type: zip
     
     runs-on: ${{ matrix.os }}
     permissions:
@@ -90,16 +86,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            cp target/${{ matrix.target }}/release/wakezilla.exe release/${{ matrix.artifact_name }}.exe
-            cd release
-            zip ${{ matrix.artifact_name }}.${{ matrix.archive_type }} ${{ matrix.artifact_name }}.exe
-          else
-            cp target/${{ matrix.target }}/release/wakezilla release/${{ matrix.artifact_name }}
-            chmod +x release/${{ matrix.artifact_name }}
-            cd release
-            tar czf ${{ matrix.artifact_name }}.${{ matrix.archive_type }} ${{ matrix.artifact_name }}
-          fi
+          cp target/${{ matrix.target }}/release/wakezilla release/${{ matrix.artifact_name }}
+          chmod +x release/${{ matrix.artifact_name }}
+          cd release
+          tar czf ${{ matrix.artifact_name }}.${{ matrix.archive_type }} ${{ matrix.artifact_name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -145,7 +135,6 @@ jobs:
             - **Linux (x86_64)**: `wakezilla-linux-x86_64.tar.gz`
             - **macOS (x86_64)**: `wakezilla-macos-x86_64.tar.gz`
             - **macOS (ARM64)**: `wakezilla-macos-arm64.tar.gz`
-            - **Windows (x86_64)**: `wakezilla-windows-x86_64.zip`
             
             ### Installation
             Extract the archive for your platform and run the binary.
