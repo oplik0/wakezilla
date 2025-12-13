@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'  # Triggers when a tag starting with 'v' is created
+      - 'v*'
 
 jobs:
   build:
@@ -39,7 +39,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Tag version: $VERSION"
 
-      - name: 🔧 Setup Rust toolchain (nightly) and wasm target
+      - name: Setup Rust toolchain
         shell: bash
         run: |
           rustup toolchain install nightly --allow-downgrade
@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: rustup target add ${{ matrix.target }}
 
-      - name: ⚡ Cache Rust dependencies
+      - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -60,8 +60,7 @@ jobs:
         uses: actions/cache@v4
         id: cache-cargo-bin
         with:
-          path: |
-            ~/.cargo/bin
+          path: ~/.cargo/bin
           key: ${{ runner.os }}-cargo-bin-v1
           restore-keys: |
             ${{ runner.os }}-cargo-bin-
