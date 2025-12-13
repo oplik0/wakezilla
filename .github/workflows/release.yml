@@ -37,12 +37,14 @@ jobs:
 
       - name: Extract version from tag
         id: tag_version
+        shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Tag version: $VERSION"
 
       - name: 🔧 Setup Rust toolchain (nightly) and wasm target
+        shell: bash
         run: |
           rustup toolchain install nightly --allow-downgrade
           rustup target add wasm32-unknown-unknown
@@ -57,22 +59,26 @@ jobs:
         uses: actions/cache@v4
         id: cache-cargo-bin
         with:
-          path: ~/.cargo/bin
+          path: |
+            ~/.cargo/bin
           key: ${{ runner.os }}-cargo-bin-v1
           restore-keys: |
             ${{ runner.os }}-cargo-bin-
 
       - name: Install Trunk
         if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           if ! command -v trunk &> /dev/null; then
             cargo install trunk
           fi
 
       - name: Build frontend
+        shell: bash
         run: cd frontend && trunk build --release
 
       - name: Build binary
+        shell: bash
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Create release archive
@@ -111,6 +117,7 @@ jobs:
 
       - name: Extract version from tag
         id: tag_version
+        shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
