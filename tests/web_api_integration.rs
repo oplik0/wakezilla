@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use tower::util::ServiceExt;
 use wakezilla::connection_pool::ConnectionPool;
 use wakezilla::proxy_server::{api_routes, build_router};
-use wakezilla::web::{AppState, Machine, RequestRateConfig};
+use wakezilla::web::{AppState, Machine};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -54,10 +54,7 @@ fn sample_machine() -> Machine {
         description: Some("Primary workstation".to_string()),
         turn_off_port: None,
         can_be_turned_off: false,
-        request_rate: RequestRateConfig {
-            max_requests: 0,
-            period_minutes: 60,
-        },
+        inactivity_period: 60,
         port_forwards: Vec::new(),
     }
 }

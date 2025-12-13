@@ -1,7 +1,7 @@
 use crate::connection_pool::ConnectionPool;
 use crate::{web::Machine, wol};
 use anyhow::{Context, Result};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -16,55 +16,351 @@ fn turn_off_url(remote_ip: &str, turn_off_port: u16) -> String {
     format!("http://{}:{}/machines/turn-off", remote_ip, turn_off_port)
 }
 
-#[derive(Clone)]
-struct TurnOffLimiter {
-    request_times: Arc<Mutex<VecDeque<Instant>>>,
+struct MachineConfig {
+    request_times: VecDeque<Instant>,
     max_requests: usize,
     window: Duration,
     turn_off_port: u16,
-    remote_ip: Ipv4Addr,
     mac: String,
-    triggered: Arc<AtomicBool>,
+    triggered: AtomicBool,
+    last_request: Instant,
+}
+
+#[derive(Clone)]
+pub struct TurnOffLimiter {
+    machines: Arc<Mutex<HashMap<Ipv4Addr, MachineConfig>>>,
 }
 
 impl TurnOffLimiter {
-    fn new(machine: &Machine, turn_off_port: u16) -> Self {
-        let window_minutes = machine.request_rate.period_minutes.max(1);
-        let window_secs = window_minutes.saturating_mul(60);
+    pub fn new() -> Self {
         Self {
-            request_times: Arc::new(Mutex::new(VecDeque::new())),
-            max_requests: machine.request_rate.max_requests as usize,
-            window: Duration::from_secs(window_secs as u64),
-            turn_off_port,
-            remote_ip: machine.ip,
-            mac: machine.mac.clone(),
-            triggered: Arc::new(AtomicBool::new(false)),
+            machines: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    fn record_request(&self) -> Option<usize> {
-        if self.max_requests == 0 {
+    pub fn initialize_machine(&self, machine: &Machine, turn_off_port: u16) {
+        let window_minutes = machine.inactivity_period.max(1);
+        let window_secs = window_minutes.saturating_mul(60);
+        let config = MachineConfig {
+            request_times: VecDeque::new(),
+            max_requests: 0, // No longer used for rate limiting
+            window: Duration::from_secs(window_secs as u64),
+            turn_off_port,
+            mac: machine.mac.clone(),
+            triggered: AtomicBool::new(false),
+            last_request: Instant::now(),
+        };
+        let mut machines = self.machines.lock().unwrap();
+        machines.insert(machine.ip, config);
+    }
+
+    #[allow(dead_code)]
+    pub fn update_machine(&self, machine: &Machine, turn_off_port: u16) {
+        let window_minutes = machine.inactivity_period.max(1);
+        let window_secs = window_minutes.saturating_mul(60);
+        let mut machines = self.machines.lock().unwrap();
+        if let Some(config) = machines.get_mut(&machine.ip) {
+            // Update existing configuration
+            config.window = Duration::from_secs(window_secs as u64);
+            config.turn_off_port = turn_off_port;
+            config.mac = machine.mac.clone();
+            // Reset triggered flag so it can trigger again if needed
+            config.triggered.store(false, Ordering::SeqCst);
+            debug!(
+                "Updated inactivity monitoring configuration for machine {} (IP: {}): {}min",
+                machine.mac, machine.ip, machine.inactivity_period
+            );
+        } else {
+            // Machine not found, initialize it
+            drop(machines);
+            self.initialize_machine(machine, turn_off_port);
+        }
+    }
+
+    fn record_request(&self, ip: Ipv4Addr) -> Option<(usize, u16, String, Duration)> {
+        let mut machines = self.machines.lock().unwrap();
+        let config = machines.get_mut(&ip)?;
+
+        if config.max_requests == 0 {
             return None;
         }
 
         let now = Instant::now();
-        let mut times = self.request_times.lock().unwrap();
-        times.push_back(now);
+        config.request_times.push_back(now);
+        config.last_request = now;
 
-        while let Some(oldest) = times.front() {
-            if now.duration_since(*oldest) > self.window {
-                times.pop_front();
+        while let Some(oldest) = config.request_times.front() {
+            if now.duration_since(*oldest) > config.window {
+                config.request_times.pop_front();
             } else {
                 break;
             }
         }
 
-        let current = times.len();
-        if current >= self.max_requests && !self.triggered.swap(true, Ordering::SeqCst) {
-            Some(current)
+        let current = config.request_times.len();
+        if current >= config.max_requests && !config.triggered.swap(true, Ordering::SeqCst) {
+            Some((
+                current,
+                config.turn_off_port,
+                config.mac.clone(),
+                config.window,
+            ))
         } else {
             None
         }
+    }
+
+    fn check_and_trigger_turn_off(&self, ip: Ipv4Addr) {
+        debug!("Checking request limit for {}", ip);
+        if let Some((hit_count, turn_off_port, mac, window)) = self.record_request(ip) {
+            let remote_ip = ip.to_string();
+            tokio::spawn(async move {
+                info!(
+                    "Request limit reached for {}: {} requests within {:?}, sending turn-off signal",
+                    mac, hit_count, window
+                );
+                if let Err(e) = turn_off_remote_machine(&remote_ip, turn_off_port).await {
+                    error!(
+                        "Failed to send turn-off signal for {} on {}:{}: {}",
+                        mac, remote_ip, turn_off_port, e
+                    );
+                }
+            });
+        }
+    }
+
+    pub fn start_inactivity_monitor(&self) -> tokio::task::AbortHandle {
+        let limiter = self.clone();
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+                let now = Instant::now();
+                let machines_to_check: Vec<(Ipv4Addr, u16, String)> = {
+                    let machines = limiter.machines.lock().unwrap();
+                    machines
+                        .iter()
+                        .filter_map(|(ip, config)| {
+                            let time_since_last_request = now.duration_since(config.last_request);
+                            debug!(
+                                "Checking inactivity for machine {} (IP: {}): last request was {:?} ago, window is {:?}",
+                                config.mac, ip, time_since_last_request, config.window
+                            );
+                            if time_since_last_request > config.window {
+                                // Use swap to atomically check and set triggered flag
+                                if !config.triggered.swap(true, Ordering::SeqCst) {
+                                    debug!(
+                                        "Machine {} (IP: {}) has been inactive for {:?}, exceeding window of {:?}",
+                                        config.mac, ip, time_since_last_request, config.window
+                                    );
+                                    Some((*ip, config.turn_off_port, config.mac.clone()))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                };
+
+                for (ip, turn_off_port, mac) in machines_to_check {
+                    let remote_ip = ip.to_string();
+                    debug!(
+                        "Sending turn-off signal for inactive machine {} (IP: {})",
+                        mac, remote_ip
+                    );
+                    tokio::spawn(async move {
+                        if let Err(e) = turn_off_remote_machine(&remote_ip, turn_off_port).await {
+                            error!(
+                                "Failed to send turn-off signal for inactive machine {} on {}:{}: {}",
+                                mac, remote_ip, turn_off_port, e
+                            );
+                        }
+                    });
+                }
+            }
+        }).abort_handle();
+        handle
+    }
+
+    pub async fn proxy_internal(
+        &self,
+        local_port: u16,
+        remote_addr: SocketAddr,
+        machine: Machine,
+        wol_port: u16,
+        mut rx: watch::Receiver<bool>,
+        connection_pool: ConnectionPool,
+    ) -> Result<()> {
+        let listen_addr = format!("0.0.0.0:{}", local_port);
+        let listener = TcpListener::bind(&listen_addr)
+            .await
+            .with_context(|| format!("Failed to bind TCP listener on {}", listen_addr))?;
+        info!(
+            "TCP Forwarder listening on {}, proxying to {}, inactivity period: {}min",
+            listen_addr,
+            remote_addr,
+            machine.inactivity_period
+        );
+
+        let machine_ip = machine.ip;
+
+        // Note: Monitor is started globally, not per proxy
+
+        loop {
+            tokio::select! {
+                result = rx.changed() => {
+                    if result.is_err() || !*rx.borrow() {
+                        info!("Proxy for {} on port {} cancelled.", remote_addr, local_port);
+                        return Ok(());
+                    }
+                }
+                result = listener.accept() => {
+                    let (mut inbound, client_addr) = result
+                        .context("Failed to accept incoming connection")?;
+                    info!(
+                        "Accepted connection from {} to forward to {}",
+                        client_addr, remote_addr
+                    );
+
+                    let remote_addr_clone = remote_addr;
+                    let mac_str_clone = machine.mac.clone();
+                    let rate_limiter = self.clone();
+                    let machine_ip_clone = machine_ip;
+
+                    let connection_pool_clone = connection_pool.clone();
+                    tokio::spawn(async move {
+                        rate_limiter.check_and_trigger_turn_off(machine_ip_clone);
+
+                        let connect_timeout = Duration::from_millis(1000);
+                        if !wol::tcp_check(remote_addr_clone, connect_timeout) {
+                            info!(
+                                "Host {} seems to be down. Sending WOL packet to MAC {}.",
+                                remote_addr_clone, mac_str_clone
+                            );
+
+                            let mac = match wol::parse_mac(&mac_str_clone) {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    error!("Invalid MAC for WOL on proxy: {}: {}", mac_str_clone, e);
+                                    return;
+                                }
+                            };
+
+                            let broadcast_addr = Ipv4Addr::new(255, 255, 255, 255);
+                            let wol_config = Default::default();
+                            if let Err(e) = crate::wol::send_packets(&mac, broadcast_addr, wol_port, 3, &wol_config).await {
+                                error!("Failed to send WOL packet for {}: {}", mac_str_clone, e);
+                                return;
+                            }
+
+                            info!(
+                                "WOL packet sent. Waiting up to 60s for {} to become reachable...",
+                                remote_addr_clone
+                            );
+
+                            let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+                            let mut host_up = false;
+                            while tokio::time::Instant::now() < deadline {
+                                if wol::tcp_check(remote_addr_clone, connect_timeout) {
+                                    info!("Host {} is now up.", remote_addr_clone);
+                                    host_up = true;
+                                    break;
+                                }
+                                tokio::time::sleep(Duration::from_secs(2)).await;
+                            }
+
+                            if !host_up {
+                                warn!(
+                                    "Timeout waiting for host {} to come up. Dropping connection from {}.",
+                                    remote_addr_clone, client_addr
+                                );
+                                return;
+                            }
+                        }
+
+                        let mut outbound = match connection_pool_clone.get_connection(remote_addr_clone).await {
+                            Ok(stream) => {
+                                debug!("Successfully obtained or created connection to {}", remote_addr_clone);
+                                stream
+                            }
+                            Err(e) => {
+                                error!("Failed to obtain connection to remote {}: {}", remote_addr_clone, e);
+                                return;
+                            }
+                        };
+
+                        match copy_bidirectional(&mut inbound, &mut outbound).await {
+                            Ok(_) => {
+                                // Most targets close the connection after each request.
+                                // Drop the stream instead of reusing a socket that is very
+                                // likely already shut down by the remote endpoint.
+                                drop(outbound);
+                                debug!(
+                                    "Completed data transfer for {} (connection closed)",
+                                    remote_addr_clone
+                                );
+                            }
+                            Err(e) => {
+                                // Drop the broken connection so it isn't re-used from the pool.
+                                drop(outbound);
+                                connection_pool_clone.remove_target(remote_addr_clone).await;
+                                warn!(
+                                    "Error forwarding data between {} and {}: {}",
+                                    client_addr, remote_addr_clone, e
+                                );
+                            }
+                        }
+
+                    });
+                }
+            }
+        }
+    }
+
+    pub async fn proxy(
+        local_port: u16,
+        remote_addr: SocketAddr,
+        machine: Machine,
+        wol_port: u16,
+        rx: watch::Receiver<bool>,
+        connection_pool: ConnectionPool,
+        limiter: Arc<TurnOffLimiter>,
+    ) -> Result<()> {
+        // Initialize machine configuration if turn-off is enabled
+        if machine.can_be_turned_off {
+            if let Some(port) = machine.turn_off_port {
+                limiter.initialize_machine(&machine, port);
+                info!(
+                    "Initialized inactivity monitoring for machine {} ({}): {}min",
+                    machine.mac,
+                    machine.ip,
+                    machine.inactivity_period
+                );
+            } else {
+                debug!(
+                    "Turn off port not configured for {}, skipping inactivity-based shutdown",
+                    machine.mac
+                );
+            }
+        } else {
+            info!(
+                "Machine {} cannot be turned off automatically (feature disabled)",
+                machine.mac
+            );
+        }
+
+        limiter
+            .proxy_internal(
+                local_port,
+                remote_addr,
+                machine,
+                wol_port,
+                rx,
+                connection_pool,
+            )
+            .await
     }
 }
 
@@ -94,180 +390,6 @@ pub async fn turn_off_remote_machine(
         );
     }
     Ok(())
-}
-pub async fn proxy(
-    local_port: u16,
-    remote_addr: SocketAddr,
-    machine: Machine,
-    wol_port: u16,
-    mut rx: watch::Receiver<bool>,
-    connection_pool: ConnectionPool,
-) -> Result<()> {
-    let listen_addr = format!("0.0.0.0:{}", local_port);
-    let listener = TcpListener::bind(&listen_addr)
-        .await
-        .with_context(|| format!("Failed to bind TCP listener on {}", listen_addr))?;
-    info!(
-        "TCP Forwarder listening on {}, proxying to {}, rate limit: {}/{}min",
-        listen_addr,
-        remote_addr,
-        machine.request_rate.max_requests,
-        machine.request_rate.period_minutes
-    );
-
-    let rate_limiter = if machine.can_be_turned_off {
-        if let Some(port) = machine.turn_off_port {
-            if machine.request_rate.max_requests > 0 {
-                Some(TurnOffLimiter::new(&machine, port))
-            } else {
-                info!(
-                    "Machine {} has rate limit disabled (max_requests = 0)",
-                    machine.mac
-                );
-                None
-            }
-        } else {
-            debug!(
-                "Turn off port not configured for {}, skipping rate-based shutdown",
-                machine.mac
-            );
-            None
-        }
-    } else {
-        info!(
-            "Machine {} cannot be turned off automatically (feature disabled)",
-            machine.mac
-        );
-        None
-    };
-
-    loop {
-        tokio::select! {
-            result = rx.changed() => {
-                if result.is_err() || !*rx.borrow() {
-                    info!("Proxy for {} on port {} cancelled.", remote_addr, local_port);
-                    return Ok(());
-                }
-            }
-            result = listener.accept() => {
-                let (mut inbound, client_addr) = result
-                    .context("Failed to accept incoming connection")?;
-                info!(
-                    "Accepted connection from {} to forward to {}",
-                    client_addr, remote_addr
-                );
-
-                let remote_addr_clone = remote_addr;
-                let mac_str_clone = machine.mac.clone();
-                let rate_limiter = rate_limiter.clone();
-
-                let connection_pool_clone = connection_pool.clone();
-                tokio::spawn(async move {
-                    if let Some(limiter) = rate_limiter.clone() {
-                        if let Some(hit_count) = limiter.record_request() {
-                            let remote_ip = limiter.remote_ip.to_string();
-                            let turn_off_port = limiter.turn_off_port;
-                            let mac = limiter.mac.clone();
-                            let window = limiter.window;
-                            tokio::spawn(async move {
-                                info!(
-                                    "Request limit reached for {}: {} requests within {:?}, sending turn-off signal",
-                                    mac, hit_count, window
-                                );
-                                if let Err(e) = turn_off_remote_machine(&remote_ip, turn_off_port).await {
-                                    error!(
-                                        "Failed to send turn-off signal for {} on {}:{}: {}",
-                                        mac, remote_ip, turn_off_port, e
-                                    );
-                                }
-                            });
-                        }
-                    }
-
-                    let connect_timeout = Duration::from_millis(1000);
-                    if !wol::tcp_check(remote_addr_clone, connect_timeout) {
-                        info!(
-                            "Host {} seems to be down. Sending WOL packet to MAC {}.",
-                            remote_addr_clone, mac_str_clone
-                        );
-
-                        let mac = match wol::parse_mac(&mac_str_clone) {
-                            Ok(m) => m,
-                            Err(e) => {
-                                error!("Invalid MAC for WOL on proxy: {}: {}", mac_str_clone, e);
-                                return;
-                            }
-                        };
-
-                        let broadcast_addr = Ipv4Addr::new(255, 255, 255, 255);
-                        let wol_config = Default::default();
-                        if let Err(e) = crate::wol::send_packets(&mac, broadcast_addr, wol_port, 3, &wol_config).await {
-                            error!("Failed to send WOL packet for {}: {}", mac_str_clone, e);
-                            return;
-                        }
-
-                        info!(
-                            "WOL packet sent. Waiting up to 60s for {} to become reachable...",
-                            remote_addr_clone
-                        );
-
-                        let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
-                        let mut host_up = false;
-                        while tokio::time::Instant::now() < deadline {
-                            if wol::tcp_check(remote_addr_clone, connect_timeout) {
-                                info!("Host {} is now up.", remote_addr_clone);
-                                host_up = true;
-                                break;
-                            }
-                            tokio::time::sleep(Duration::from_secs(2)).await;
-                        }
-
-                        if !host_up {
-                            warn!(
-                                "Timeout waiting for host {} to come up. Dropping connection from {}.",
-                                remote_addr_clone, client_addr
-                            );
-                            return;
-                        }
-                    }
-
-                    let mut outbound = match connection_pool_clone.get_connection(remote_addr_clone).await {
-                        Ok(stream) => {
-                            debug!("Successfully obtained or created connection to {}", remote_addr_clone);
-                            stream
-                        }
-                        Err(e) => {
-                            error!("Failed to obtain connection to remote {}: {}", remote_addr_clone, e);
-                            return;
-                        }
-                    };
-
-                    match copy_bidirectional(&mut inbound, &mut outbound).await {
-                        Ok(_) => {
-                            // Most targets close the connection after each request.
-                            // Drop the stream instead of reusing a socket that is very
-                            // likely already shut down by the remote endpoint.
-                            drop(outbound);
-                            debug!(
-                                "Completed data transfer for {} (connection closed)",
-                                remote_addr_clone
-                            );
-                        }
-                        Err(e) => {
-                            // Drop the broken connection so it isn't re-used from the pool.
-                            drop(outbound);
-                            connection_pool_clone.remove_target(remote_addr_clone).await;
-                            warn!(
-                                "Error forwarding data between {} and {}: {}",
-                                client_addr, remote_addr_clone, e
-                            );
-                        }
-                    }
-
-                });
-            }
-        }
-    }
 }
 
 #[cfg(test)]

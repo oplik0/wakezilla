@@ -8,7 +8,7 @@ use tokio::sync::watch;
 
 use wakezilla::connection_pool::ConnectionPool;
 use wakezilla::forward;
-use wakezilla::web::{Machine, RequestRateConfig};
+use wakezilla::web::Machine;
 
 fn find_free_port() -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
@@ -61,10 +61,7 @@ async fn proxy_forwards_tcp_traffic_and_can_shutdown() {
         description: None,
         turn_off_port: None,
         can_be_turned_off: false,
-        request_rate: RequestRateConfig {
-            max_requests: 0,
-            period_minutes: 60,
-        },
+        inactivity_period: 60,
         port_forwards: Vec::new(),
     };
 
@@ -82,7 +79,7 @@ async fn proxy_forwards_tcp_traffic_and_can_shutdown() {
         Err(err) => panic!("failed to discover free port: {err}"),
     };
 
-    let proxy_task = tokio::spawn(forward::proxy(
+    let proxy_task = tokio::spawn(forward::TurnOffLimiter::proxy(
         local_port,
         remote_addr,
         machine,
