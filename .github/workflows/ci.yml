@@ -19,14 +19,34 @@ jobs:
       - name: Setup Rust toolchain and wasm target
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Install Trunk
-        run: cargo install trunk
-
       - name: ⚡ Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . frontend
+
+      - name: Cache Cargo bin directory
+        uses: actions/cache@v4
+        id: cache-cargo-bin
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-v1
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-
+
+      - name: Install Trunk
+        if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
+        run: |
+          if ! command -v trunk &> /dev/null; then
+            cargo install trunk
+          fi
 
       - name: Install Tarpaulin
-        run: cargo install cargo-tarpaulin
+        if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
+        run: |
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin
+          fi
 
       - name: Check formatting
         run: cargo fmt --all -- --check

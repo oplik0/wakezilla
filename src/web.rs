@@ -60,8 +60,8 @@ pub struct Machine {
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
     pub can_be_turned_off: bool,
-    #[serde(default = "get_default_request_rate")]
-    pub request_rate: RequestRateConfig,
+    #[serde(default = "get_default_inactivity_period")]
+    pub inactivity_period: u32,
 
     pub port_forwards: Vec<PortForward>,
 }
@@ -107,8 +107,7 @@ pub struct AddMachineForm {
     pub turn_off_port: Option<u16>,
     #[serde(default = "default_can_be_turned_off")]
     pub can_be_turned_off: bool,
-    pub requests_per_hour: Option<u32>,
-    pub period_minutes: Option<u32>,
+    pub inactivity_period: Option<u32>,
     pub port_forwards: Option<Vec<PortForward>>,
 }
 
@@ -123,22 +122,12 @@ pub struct MachinePayload {
     pub turn_off_port: Option<u16>,
     #[serde(default = "default_can_be_turned_off")]
     pub can_be_turned_off: bool,
-    pub requests_per_hour: Option<u32>,
-    pub period_minutes: Option<u32>,
+    pub inactivity_period: Option<u32>,
     pub port_forwards: Option<Vec<PortForward>>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct RequestRateConfig {
-    pub max_requests: u32,
-    pub period_minutes: u32,
-}
-
-pub fn get_default_request_rate() -> RequestRateConfig {
-    RequestRateConfig {
-        max_requests: 10,
-        period_minutes: 30,
-    }
+pub fn get_default_inactivity_period() -> u32 {
+    30
 }
 
 fn default_can_be_turned_off() -> bool {
@@ -150,6 +139,8 @@ pub struct AppState {
     pub machines: Arc<RwLock<Vec<Machine>>>,
     pub proxies: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
     pub connection_pool: ConnectionPool,
+    pub turn_off_limiter: Arc<forward::TurnOffLimiter>,
+    pub monitor_handle: Arc<std::sync::Mutex<Option<tokio::task::AbortHandle>>>,
 }
 
 /// Load machines using the configured database path
@@ -201,6 +192,7 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
 
         let proxies_clone = state.proxies.clone();
         let connection_pool_clone = state.connection_pool.clone();
+        let limiter_clone = state.turn_off_limiter.clone();
         tokio::spawn(async move {
             let mut proxies = proxies_clone.write().await;
             proxies.insert(proxy_key.clone(), tx);
@@ -208,13 +200,14 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
             // We can't hold the lock across the await, so we need to drop it here
             drop(proxies);
 
-            if let Err(e) = forward::proxy(
+            if let Err(e) = forward::TurnOffLimiter::proxy(
                 local_port,
                 remote_addr,
                 machine_clone,
                 wol_port,
                 rx,
                 connection_pool_clone,
+                limiter_clone,
             )
             .await
             {
@@ -225,6 +218,26 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
             }
         });
     }
+}
+
+pub fn start_global_monitor(state: &AppState) {
+    let mut handle_guard = state.monitor_handle.lock().unwrap();
+    if handle_guard.is_none() {
+        let handle = state.turn_off_limiter.start_inactivity_monitor();
+        *handle_guard = Some(handle);
+        info!("Started global inactivity monitor");
+    }
+}
+
+pub fn restart_global_monitor(state: &AppState) {
+    let mut handle_guard = state.monitor_handle.lock().unwrap();
+    if let Some(handle) = handle_guard.take() {
+        handle.abort();
+        info!("Stopped old inactivity monitor");
+    }
+    let handle = state.turn_off_limiter.start_inactivity_monitor();
+    *handle_guard = Some(handle);
+    info!("Restarted global inactivity monitor");
 }
 
 #[cfg(test)]
@@ -291,7 +304,7 @@ mod tests {
                     "description": null,
                     "turn_off_port": 8080,
                     "can_be_turned_off": true,
-                    "request_rate": {"max_requests": 5, "period_minutes": 10},
+                    "inactivity_period": 10,
                     "port_forwards": []
                 }
             ]
@@ -319,7 +332,7 @@ mod tests {
             description: Some("Example".to_string()),
             turn_off_port: Some(9000),
             can_be_turned_off: true,
-            request_rate: get_default_request_rate(),
+            inactivity_period: get_default_inactivity_period(),
             port_forwards: vec![],
         }];
 

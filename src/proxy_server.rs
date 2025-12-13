@@ -108,7 +108,12 @@ pub async fn start(port: u16) -> Result<()> {
         machines: Arc::new(RwLock::new(initial_machines.clone())),
         proxies: Arc::new(RwLock::new(HashMap::new())),
         connection_pool,
+        turn_off_limiter: Arc::new(forward::TurnOffLimiter::new()),
+        monitor_handle: Arc::new(std::sync::Mutex::new(None)),
     };
+
+    // Start global monitor
+    web::start_global_monitor(&state);
 
     for machine in &initial_machines {
         web::start_proxy_if_configured(machine, &state);
@@ -240,10 +245,9 @@ async fn add_machine_api(
         description: payload.description,
         turn_off_port: payload.turn_off_port,
         can_be_turned_off: payload.can_be_turned_off,
-        request_rate: web::RequestRateConfig {
-            max_requests: payload.requests_per_hour.unwrap_or(60),
-            period_minutes: payload.period_minutes.unwrap_or(60),
-        },
+        inactivity_period: payload
+            .inactivity_period
+            .unwrap_or(web::get_default_inactivity_period()),
         port_forwards: payload.port_forwards.unwrap_or_default(),
     };
     let mut machines = state.machines.write().await;
@@ -299,6 +303,9 @@ async fn update_machine_api(
             Json(serde_json::json!({ "error": "Machine not found" })),
         ));
     }
+    // Find the old machine to get its IP for stopping proxies
+    let old_machine = machines.iter().find(|m| m.mac == mac).cloned();
+
     // remove the machine to update
     machines.retain(|m| m.mac != mac);
 
@@ -309,10 +316,9 @@ async fn update_machine_api(
         description: payload.description.clone(),
         turn_off_port: payload.turn_off_port,
         can_be_turned_off: payload.can_be_turned_off,
-        request_rate: web::RequestRateConfig {
-            max_requests: payload.requests_per_hour.unwrap_or(1000),
-            period_minutes: payload.period_minutes.unwrap_or(60),
-        },
+        inactivity_period: payload
+            .inactivity_period
+            .unwrap_or(web::get_default_inactivity_period()),
         port_forwards: payload.port_forwards.clone().unwrap_or_default(),
     };
 
@@ -325,8 +331,31 @@ async fn update_machine_api(
         ));
     }
 
-    // Restart proxy if needed
+    // Stop old proxies if machine existed
+    if old_machine.is_some() {
+        let mut proxies = state.proxies.write().await;
+        let keys_to_stop: Vec<String> = proxies
+            .keys()
+            .filter(|key| key.starts_with(&mac))
+            .cloned()
+            .collect();
+
+        for key in keys_to_stop {
+            if let Some(tx) = proxies.get(&key) {
+                if tx.send(false).is_ok() {
+                    info!("Stopped old proxy for key: {}", key);
+                }
+            }
+            proxies.remove(&key);
+        }
+        drop(proxies);
+    }
+
+    // Restart proxy with updated configuration
     web::start_proxy_if_configured(&new_machine, &state);
+
+    // Restart global monitor to pick up configuration changes
+    web::restart_global_monitor(&state);
 
     Ok(Json(serde_json::json!({ "status": "Machine updated" })))
 }
@@ -505,11 +534,15 @@ mod tests {
     }
 
     fn state_with_machines(machines: Vec<Machine>) -> AppState {
-        AppState {
+        let state = AppState {
             machines: Arc::new(RwLock::new(machines)),
             proxies: Arc::new(RwLock::new(HashMap::new())),
             connection_pool: ConnectionPool::new(),
-        }
+            turn_off_limiter: Arc::new(forward::TurnOffLimiter::new()),
+            monitor_handle: Arc::new(std::sync::Mutex::new(None)),
+        };
+        web::start_global_monitor(&state);
+        state
     }
 
     fn sample_machine() -> Machine {
@@ -520,10 +553,7 @@ mod tests {
             description: Some("Desc".to_string()),
             turn_off_port: Some(8080),
             can_be_turned_off: false,
-            request_rate: web::RequestRateConfig {
-                max_requests: 5,
-                period_minutes: 30,
-            },
+            inactivity_period: 30,
             port_forwards: vec![],
         }
     }
@@ -594,8 +624,7 @@ mod tests {
             description: Some("Test machine".to_string()),
             turn_off_port: Some(8080),
             can_be_turned_off: true,
-            requests_per_hour: Some(12),
-            period_minutes: Some(6),
+            inactivity_period: Some(6),
             port_forwards: None,
         };
 
@@ -608,8 +637,7 @@ mod tests {
         assert_eq!(machines.len(), 1);
         assert_eq!(machines[0].mac, "AA:BB:CC:DD:EE:FF");
         assert_eq!(machines[0].name, "New machine");
-        assert_eq!(machines[0].request_rate.max_requests, 12);
-        assert_eq!(machines[0].request_rate.period_minutes, 6);
+        assert_eq!(machines[0].inactivity_period, 6);
     }
 
     #[tokio::test]
@@ -622,8 +650,7 @@ mod tests {
             description: None,
             turn_off_port: None,
             can_be_turned_off: false,
-            requests_per_hour: None,
-            period_minutes: None,
+            inactivity_period: None,
             port_forwards: None,
         };
 
@@ -723,8 +750,7 @@ mod tests {
             description: Some("New description".to_string()),
             turn_off_port: Some(9090),
             can_be_turned_off: true,
-            requests_per_hour: Some(42),
-            period_minutes: Some(12),
+            inactivity_period: Some(12),
             port_forwards: Some(vec![]),
         };
 
@@ -743,8 +769,7 @@ mod tests {
         assert_eq!(updated.name, "Updated");
         assert_eq!(updated.description.as_deref(), Some("New description"));
         assert!(updated.can_be_turned_off);
-        assert_eq!(updated.request_rate.max_requests, 42);
-        assert_eq!(updated.request_rate.period_minutes, 12);
+        assert_eq!(updated.inactivity_period, 12);
         assert_eq!(updated.turn_off_port, Some(9090));
         assert_eq!(updated.ip, Ipv4Addr::new(10, 0, 0, 2));
     }

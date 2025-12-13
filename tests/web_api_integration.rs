@@ -8,8 +8,9 @@ use tempfile::TempDir;
 use tokio::sync::RwLock;
 use tower::util::ServiceExt;
 use wakezilla::connection_pool::ConnectionPool;
+use wakezilla::forward::TurnOffLimiter;
 use wakezilla::proxy_server::{api_routes, build_router};
-use wakezilla::web::{AppState, Machine, RequestRateConfig};
+use wakezilla::web::{AppState, Machine};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -41,6 +42,8 @@ fn setup_state(temp_dir: &TempDir) -> (AppState, EnvVarGuard) {
         machines,
         proxies,
         connection_pool: ConnectionPool::new(),
+        turn_off_limiter: Arc::new(TurnOffLimiter::new()),
+        monitor_handle: Arc::new(std::sync::Mutex::new(None)),
     };
 
     (state, guard)
@@ -54,10 +57,7 @@ fn sample_machine() -> Machine {
         description: Some("Primary workstation".to_string()),
         turn_off_port: None,
         can_be_turned_off: false,
-        request_rate: RequestRateConfig {
-            max_requests: 0,
-            period_minutes: 60,
-        },
+        inactivity_period: 60,
         port_forwards: Vec::new(),
     }
 }
@@ -165,8 +165,7 @@ async fn add_and_delete_machine_via_api_updates_state() {
                         "description": null,
                         "turn_off_port": null,
                         "can_be_turned_off": false,
-                        "requests_per_hour": null,
-                        "period_minutes": null,
+                        "inactivity_period": null,
                         "port_forwards": []
                     }))
                     .expect("serialize payload"),
@@ -228,8 +227,7 @@ async fn add_machine_with_invalid_data_returns_errors() {
                         "description": null,
                         "turn_off_port": null,
                         "can_be_turned_off": false,
-                        "requests_per_hour": null,
-                        "period_minutes": null,
+                        "inactivity_period": null,
                         "port_forwards": []
                     }))
                     .expect("serialize payload"),
