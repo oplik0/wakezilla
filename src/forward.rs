@@ -110,6 +110,14 @@ impl TurnOffLimiter {
         }
     }
 
+    pub fn update_last_request(&self, ip: Ipv4Addr) {
+        let mut machines = self.machines.lock().unwrap();
+        if let Some(config) = machines.get_mut(&ip) {
+            config.last_request = Instant::now();
+            debug!("Updated last_request for machine {} (IP: {})", config.mac, ip);
+        }
+    }
+
     fn check_and_trigger_turn_off(&self, ip: Ipv4Addr) {
         debug!("Checking request limit for {}", ip);
         if let Some((hit_count, turn_off_port, mac, window)) = self.record_request(ip) {
@@ -231,6 +239,8 @@ impl TurnOffLimiter {
 
                     let connection_pool_clone = connection_pool.clone();
                     tokio::spawn(async move {
+                        // Update last_request whenever we receive a connection
+                        rate_limiter.update_last_request(machine_ip_clone);
                         rate_limiter.check_and_trigger_turn_off(machine_ip_clone);
 
                         let connect_timeout = Duration::from_millis(1000);
