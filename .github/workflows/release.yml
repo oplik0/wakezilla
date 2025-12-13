@@ -47,7 +47,12 @@ jobs:
         shell: bash
         run: |
           rustup toolchain install nightly --allow-downgrade
+          rustup default nightly
           rustup target add wasm32-unknown-unknown
+
+      - name: Add Rust target
+        shell: bash
+        run: rustup target add ${{ matrix.target }}
 
       - name: ⚡ Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
