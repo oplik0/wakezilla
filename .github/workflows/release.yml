@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers when a tag starting with 'v' is created
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: wakezilla-linux-x86_64
+            archive_type: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: wakezilla-macos-x86_64
+            archive_type: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: wakezilla-macos-arm64
+            archive_type: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: wakezilla-windows-x86_64
+            archive_type: zip
+    
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: tag_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+
+      - name: 🔧 Setup Rust toolchain (nightly) and wasm target
+        run: |
+          rustup toolchain install nightly --allow-downgrade
+          rustup target add wasm32-unknown-unknown
+
+      - name: ⚡ Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . frontend
+
+      - name: Cache Cargo bin directory
+        uses: actions/cache@v4
+        id: cache-cargo-bin
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-v1
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-
+
+      - name: Install Trunk
+        if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
+        run: |
+          if ! command -v trunk &> /dev/null; then
+            cargo install trunk
+          fi
+
+      - name: Build frontend
+        run: cd frontend && trunk build --release
+
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create release archive
+        shell: bash
+        run: |
+          mkdir -p release
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp target/${{ matrix.target }}/release/wakezilla.exe release/${{ matrix.artifact_name }}.exe
+            cd release
+            zip ${{ matrix.artifact_name }}.${{ matrix.archive_type }} ${{ matrix.artifact_name }}.exe
+          else
+            cp target/${{ matrix.target }}/release/wakezilla release/${{ matrix.artifact_name }}
+            chmod +x release/${{ matrix.artifact_name }}
+            cd release
+            tar czf ${{ matrix.artifact_name }}.${{ matrix.archive_type }} ${{ matrix.artifact_name }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/${{ matrix.artifact_name }}.${{ matrix.archive_type }}
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: tag_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ steps.tag_version.outputs.version }}
+          body: |
+            ## Release ${{ steps.tag_version.outputs.version }}
+            
+            ### Downloads
+            - **Linux (x86_64)**: `wakezilla-linux-x86_64.tar.gz`
+            - **macOS (x86_64)**: `wakezilla-macos-x86_64.tar.gz`
+            - **macOS (ARM64)**: `wakezilla-macos-arm64.tar.gz`
+            - **Windows (x86_64)**: `wakezilla-windows-x86_64.zip`
+            
+            ### Installation
+            Extract the archive for your platform and run the binary.
+            
+            ### Changes
+            See [commit history](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.ref }}) for details.
+          files: |
+            release/**/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
