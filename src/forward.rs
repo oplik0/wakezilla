@@ -114,7 +114,10 @@ impl TurnOffLimiter {
         let mut machines = self.machines.lock().unwrap();
         if let Some(config) = machines.get_mut(&ip) {
             config.last_request = Instant::now();
-            debug!("Updated last_request for machine {} (IP: {})", config.mac, ip);
+            debug!(
+                "Updated last_request for machine {} (IP: {})",
+                config.mac, ip
+            );
         }
     }
 
@@ -207,9 +210,7 @@ impl TurnOffLimiter {
             .with_context(|| format!("Failed to bind TCP listener on {}", listen_addr))?;
         info!(
             "TCP Forwarder listening on {}, proxying to {}, inactivity period: {}min",
-            listen_addr,
-            remote_addr,
-            machine.inactivity_period
+            listen_addr, remote_addr, machine.inactivity_period
         );
 
         let machine_ip = machine.ip;
@@ -344,9 +345,7 @@ impl TurnOffLimiter {
                 limiter.initialize_machine(&machine, port);
                 info!(
                     "Initialized inactivity monitoring for machine {} ({}): {}min",
-                    machine.mac,
-                    machine.ip,
-                    machine.inactivity_period
+                    machine.mac, machine.ip, machine.inactivity_period
                 );
             } else {
                 debug!(

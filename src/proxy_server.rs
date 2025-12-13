@@ -245,7 +245,9 @@ async fn add_machine_api(
         description: payload.description,
         turn_off_port: payload.turn_off_port,
         can_be_turned_off: payload.can_be_turned_off,
-        inactivity_period: payload.inactivity_period.unwrap_or(web::get_default_inactivity_period()),
+        inactivity_period: payload
+            .inactivity_period
+            .unwrap_or(web::get_default_inactivity_period()),
         port_forwards: payload.port_forwards.unwrap_or_default(),
     };
     let mut machines = state.machines.write().await;
@@ -303,7 +305,7 @@ async fn update_machine_api(
     }
     // Find the old machine to get its IP for stopping proxies
     let old_machine = machines.iter().find(|m| m.mac == mac).cloned();
-    
+
     // remove the machine to update
     machines.retain(|m| m.mac != mac);
 
@@ -314,7 +316,9 @@ async fn update_machine_api(
         description: payload.description.clone(),
         turn_off_port: payload.turn_off_port,
         can_be_turned_off: payload.can_be_turned_off,
-        inactivity_period: payload.inactivity_period.unwrap_or(web::get_default_inactivity_period()),
+        inactivity_period: payload
+            .inactivity_period
+            .unwrap_or(web::get_default_inactivity_period()),
         port_forwards: payload.port_forwards.clone().unwrap_or_default(),
     };
 
@@ -335,7 +339,7 @@ async fn update_machine_api(
             .filter(|key| key.starts_with(&mac))
             .cloned()
             .collect();
-        
+
         for key in keys_to_stop {
             if let Some(tx) = proxies.get(&key) {
                 if tx.send(false).is_ok() {
@@ -349,7 +353,7 @@ async fn update_machine_api(
 
     // Restart proxy with updated configuration
     web::start_proxy_if_configured(&new_machine, &state);
-    
+
     // Restart global monitor to pick up configuration changes
     web::restart_global_monitor(&state);
 

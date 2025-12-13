@@ -6,10 +6,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 
+use std::sync::Arc;
 use wakezilla::connection_pool::ConnectionPool;
 use wakezilla::forward::{self, TurnOffLimiter};
 use wakezilla::web::Machine;
-use std::sync::Arc;
 
 fn find_free_port() -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;

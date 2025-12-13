@@ -55,10 +55,7 @@ fn save_and_load_machines_round_trip() {
     assert_eq!(loaded_machine.description, original.description);
     assert_eq!(loaded_machine.turn_off_port, original.turn_off_port);
     assert_eq!(loaded_machine.can_be_turned_off, original.can_be_turned_off);
-    assert_eq!(
-        loaded_machine.inactivity_period,
-        original.inactivity_period
-    );
+    assert_eq!(loaded_machine.inactivity_period, original.inactivity_period);
     assert_eq!(loaded_machine.port_forwards.len(), 1);
     let loaded_pf = &loaded_machine.port_forwards[0];
     let original_pf = &original.port_forwards[0];
