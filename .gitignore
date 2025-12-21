@@ -2,3 +2,13 @@
 frontend/target
 dist
 machines.json
+
+# RPi system secrets (legacy - now using sops-nix)
+rpi-system/secrets.nix
+
+# SSH host keys for sops-nix (private key must stay secret!)
+rpi-system/keys/ssh_host_ed25519_key
+# Note: public key (ssh_host_ed25519_key.pub) CAN be committed
+
+# sops config (contains age public keys - copy from .sops.yaml.example)
+rpi-system/.sops.yaml

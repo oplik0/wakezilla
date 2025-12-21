@@ -28,10 +28,6 @@
           wakezilla = wakezilla-pkg;
         };
 
-        nixosModules = {
-          wakezilla = import ./modules/wakezilla;
-        };
-
         devShells = {
           default = pkgs.mkShell {
             buildInputs = with pkgs; [
@@ -48,5 +44,11 @@
           };
         };
       }
-    );
+    ) // {
+      # NixOS modules should be at the flake's top level, not per-system
+      nixosModules = {
+        wakezilla = import ./modules/wakezilla;
+        default = self.nixosModules.wakezilla;
+      };
+    };
 }
