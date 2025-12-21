@@ -28,7 +28,30 @@
 ```bash
 cargo install wakezilla
 ```
-    
+
+### Using pre-built docker image
+
+1. **Run the proxy server**:
+```bash
+docker run -d \
+ --name wakezilla-proxy \
+ --network host \
+ -e WAKEZILLA__SERVER__PROXY_PORT=3000 \
+ -v ${PWD}/wakezilla-data:/opt/wakezilla \
+ guibeira/wakezilla:latest proxy-server
+```
+Note:
+- `--network host` is required for Wake-on-LAN to work properly.
+- add `-v ${PWD}/wakezilla-data:/opt/wakezilla` to save configuration data persistently.
+
+2. **Run the client server**:
+```bash
+docker run -d \
+ --name wakezilla-client \
+ -p 3001:3001 \
+ guibeira/wakezilla:latest client-server
+```
+
 ### Install from source
 
 1. **Install Rust**:
@@ -85,16 +108,17 @@ Access the web interface at `http://<server-ip>:3000` to:
 3. Fill in MAC address, IP, and name
 4. Configure:
    - Turn-off port (if remote shutdown is needed)
-   - Request rate limiting (requests per hour and period minutes)
+   - Inactivity Period: Time in minutes before automatic shutdown (default: 30 minutes)
    - Port forwards as needed
 
 ### Configuring Automatic Shutdown
 1. When adding or editing a machine, enable "Can be turned off remotely"
 2. Set the "Turn Off Port" (typically 3001 for the client server)
-3. Configure rate limiting:
-   - Requests per Hour: Number of requests allowed
-   - Period Minutes: Time window for rate limiting
-4. The machine will automatically shut down after the configured inactivity period
+3. Configure the Inactivity Period:
+   - Set the number of minutes of inactivity before automatic shutdown
+   - The system monitors when the last request was received for each machine
+   - If no requests are received within the inactivity period, the machine will be automatically shut down
+4. The machine will automatically shut down after the configured inactivity period of no activity
 
 ### Port Forwarding
 1. Add a machine to the system
@@ -110,9 +134,7 @@ Each machine can be configured with:
 - IP Address
 - Name and Description
 - Turn-off Port (for remote shutdown)
-- Request Rate Limiting:
-  - Requests per Hour: Maximum requests allowed
-  - Period Minutes: Time window for rate limiting
+- Inactivity Period: Time in minutes before automatic shutdown (default: 30 minutes)
 - Port Forwards:
   - Local Port: Port on the server
   - Target Port: Port on the remote machine
@@ -126,9 +148,12 @@ Each machine can be configured with:
    - Waits for the machine to become reachable
    - Forwards traffic once the machine is up
 4. **Automatic Shutdown**: 
-   - Monitors request activity for each machine
-   - After configured inactivity periods, sends shutdown signal
-   - Uses HTTP requests to the client for shutdown
+   - A **single global inactivity monitor** runs continuously, checking all machines every second
+   - Each machine's `last_request` timestamp is automatically updated whenever a connection is accepted
+   - The monitor compares the time since `last_request` against the configured `inactivity_period` (in minutes)
+   - If no requests are received within the inactivity period, a shutdown signal is sent via HTTP to the client
+   - When a machine configuration is updated (e.g., inactivity period changed), the monitor is automatically stopped and restarted with the new settings
+   - This ensures only one monitor instance runs at a time, preventing duplicate shutdown signals
 
 ## Security Considerations
 
@@ -174,6 +199,9 @@ this will initialize the backend in watch mode on port 3000
    - Verify the turn-off port is configured correctly
    - Ensure the client is running on the target machine
    - Check that the client can receive HTTP requests from the server
+   - Verify the inactivity period is configured correctly (in minutes)
+   - Check logs to see when the last request was received for the machine
+   - Ensure traffic is actually reaching the proxy (requests update the last_request timestamp)
 
 ### Logs
 Check the terminal output for detailed logs about:

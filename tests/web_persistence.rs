@@ -1,4 +1,4 @@
-use wakezilla::web::{self, Machine, PortForward, RequestRateConfig};
+use wakezilla::web::{self, Machine, PortForward};
 
 struct EnvGuard {
     key: &'static str,
@@ -22,7 +22,7 @@ fn save_and_load_machines_round_trip() {
     let temp_dir = tempfile::tempdir().expect("failed to create temp directory");
     let db_path = temp_dir.path().join("machines.json");
     let _guard = EnvGuard::set(
-        "WAKEZILLA_MACHINES_DB_PATH",
+        "WAKEZILLA__STORAGE__MACHINES_DB_PATH",
         db_path.to_str().expect("temp path should be valid utf-8"),
     );
 
@@ -33,10 +33,7 @@ fn save_and_load_machines_round_trip() {
         description: Some("Main desktop".into()),
         turn_off_port: Some(4000),
         can_be_turned_off: true,
-        request_rate: RequestRateConfig {
-            max_requests: 5,
-            period_minutes: 15,
-        },
+        inactivity_period: 15,
         port_forwards: vec![PortForward {
             name: "SSH".into(),
             local_port: 2222,
@@ -58,14 +55,7 @@ fn save_and_load_machines_round_trip() {
     assert_eq!(loaded_machine.description, original.description);
     assert_eq!(loaded_machine.turn_off_port, original.turn_off_port);
     assert_eq!(loaded_machine.can_be_turned_off, original.can_be_turned_off);
-    assert_eq!(
-        loaded_machine.request_rate.max_requests,
-        original.request_rate.max_requests
-    );
-    assert_eq!(
-        loaded_machine.request_rate.period_minutes,
-        original.request_rate.period_minutes
-    );
+    assert_eq!(loaded_machine.inactivity_period, original.inactivity_period);
     assert_eq!(loaded_machine.port_forwards.len(), 1);
     let loaded_pf = &loaded_machine.port_forwards[0];
     let original_pf = &original.port_forwards[0];

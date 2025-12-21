@@ -10,10 +10,15 @@ const DEFAULT_API_PORT: u16 = 3000;
 fn get_api_base() -> String {
     if let Some(window) = window() {
         let location = window.location();
-        if let (Ok(protocol), Ok(hostname), Ok(_port)) =
+        if let (Ok(protocol), Ok(hostname), Ok(port)) =
             (location.protocol(), location.hostname(), location.port())
         {
-            format!("{}//{}:{}{}", protocol, hostname, DEFAULT_API_PORT, "/api")
+            // If the client window location does not include a port, do not include one in the API base.
+            if port.is_empty() {
+                format!("{}//{}{}", protocol, hostname, "/api")
+            } else {
+                format!("{}//{}:{}{}", protocol, hostname, DEFAULT_API_PORT, "/api")
+            }
         } else {
             // Fallback to default if location properties are not available
             String::from("http://localhost:3000/api")
@@ -34,6 +39,7 @@ pub async fn create_machine(machine: Machine) -> Result<(), String> {
 
     Ok(())
 }
+
 pub async fn get_details_machine(mac: &str) -> Result<Machine, String> {
     let api_base = get_api_base();
     Request::get(&format!("{}/machines/{}", api_base, mac))

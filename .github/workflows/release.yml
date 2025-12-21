@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: wakezilla-linux-x86_64
+            archive_type: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: wakezilla-macos-x86_64
+            archive_type: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: wakezilla-macos-arm64
+            archive_type: tar.gz
+    
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: tag_version
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+
+      - name: Setup Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install nightly --allow-downgrade
+          rustup default nightly
+          rustup target add wasm32-unknown-unknown
+
+      - name: Add Rust target
+        shell: bash
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . frontend
+
+      - name: Cache Cargo bin directory
+        uses: actions/cache@v4
+        id: cache-cargo-bin
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-v1
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-
+
+      - name: Install Trunk
+        if: steps.cache-cargo-bin.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          if ! command -v trunk &> /dev/null; then
+            cargo install trunk
+          fi
+
+      - name: Build frontend
+        shell: bash
+        run: cd frontend && trunk build --release
+
+      - name: Build binary
+        shell: bash
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Create release archive
+        shell: bash
+        run: |
+          mkdir -p release
+          cp target/${{ matrix.target }}/release/wakezilla release/${{ matrix.artifact_name }}
+          chmod +x release/${{ matrix.artifact_name }}
+          cd release
+          tar czf ${{ matrix.artifact_name }}.${{ matrix.archive_type }} ${{ matrix.artifact_name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/${{ matrix.artifact_name }}.${{ matrix.archive_type }}
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: tag_version
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ steps.tag_version.outputs.version }}
+          body: |
+            ## Release ${{ steps.tag_version.outputs.version }}
+            
+            ### Downloads
+            - **Linux (x86_64)**: `wakezilla-linux-x86_64.tar.gz`
+            - **macOS (x86_64)**: `wakezilla-macos-x86_64.tar.gz`
+            - **macOS (ARM64)**: `wakezilla-macos-arm64.tar.gz`
+            
+            ### Installation
+            Extract the archive for your platform and run the binary.
+            
+            ### Changes
+            See [commit history](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.ref }}) for details.
+          files: |
+            release/**/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

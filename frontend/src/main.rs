@@ -24,7 +24,7 @@ use crate::api::{
     get_details_machine, is_machine_online, turn_off_machine, wake_machine,
 };
 use crate::models::{
-    DiscoveredDevice, Machine, NetworkInterface, PortForward, RequestRateConfig,
+    DiscoveredDevice, Machine, NetworkInterface, PortForward,
     UpdateMachinePayload,
 };
 
@@ -69,10 +69,7 @@ fn MachineDetailPage() -> impl IntoView {
         description: None,
         turn_off_port: None,
         can_be_turned_off: false,
-        request_rate: RequestRateConfig {
-            max_requests: 60,
-            period_minutes: 60,
-        },
+        inactivity_period: 60,
         port_forwards: vec![],
     });
 
@@ -92,8 +89,7 @@ fn MachineDetailPage() -> impl IntoView {
     let (turn_off_port, set_turn_off_port) = signal::<Option<u32>>(None);
     let (can_be_turned_off, set_can_be_turned_off) = signal(false);
     let (port_forwards, set_port_forwards) = signal::<Vec<PortForward>>(vec![]);
-    let (requests_per_hour, set_requests_per_hour) = signal(60u32);
-    let (period_minutes, set_period_minutes) = signal(60u32);
+    let (inactivity_period, set_inactivity_period) = signal(60u32);
     let (turn_off_loading, set_turn_off_loading) = signal(false);
     let (turn_off_feedback, set_turn_off_feedback) = signal::<Option<(bool, String)>>(None);
     let (wake_loading, set_wake_loading) = signal(false);
@@ -113,8 +109,7 @@ fn MachineDetailPage() -> impl IntoView {
         set_turn_off_port.set(machine.turn_off_port); // This should now match the type
         set_can_be_turned_off.set(machine.can_be_turned_off);
         set_port_forwards.set(machine.port_forwards.clone());
-        set_requests_per_hour.set(machine.request_rate.max_requests);
-        set_period_minutes.set(machine.request_rate.period_minutes);
+        set_inactivity_period.set(machine.inactivity_period);
     });
 
     let update_machine = move |ev: SubmitEvent| {
@@ -145,10 +140,7 @@ fn MachineDetailPage() -> impl IntoView {
             description: updated_description,
             turn_off_port: updated_turn_off_port,
             can_be_turned_off: updated_can_be_turned_off,
-            request_rate: RequestRateConfig {
-                max_requests: requests_per_hour.get(),
-                period_minutes: period_minutes.get(),
-            },
+            inactivity_period: inactivity_period.get(),
             port_forwards: updated_port_forwards.clone(),
         };
 
@@ -161,8 +153,7 @@ fn MachineDetailPage() -> impl IntoView {
                 .turn_off_port
                 .and_then(|port| u16::try_from(port).ok()),
             can_be_turned_off: updated_machine.can_be_turned_off,
-            requests_per_hour: updated_machine.request_rate.max_requests,
-            period_minutes: updated_machine.request_rate.period_minutes,
+            inactivity_period: updated_machine.inactivity_period,
             port_forwards: updated_machine
                 .port_forwards
                 .iter()
@@ -564,19 +555,19 @@ fn MachineDetailPage() -> impl IntoView {
                     </div>
 
                     <div class="field">
-                        <label for="requests_per_hour">"Requests per hour"</label>
+                        <label for="inactivity_period">"Inactivity Period (minutes)"</label>
                         <input
                             type="number"
-                            id="requests_per_hour"
-                            name="requests_per_hour"
+                            id="inactivity_period"
+                            name="inactivity_period"
                             class="input"
                             min="1"
-                            value=move || requests_per_hour.get().to_string()
+                            value=move || inactivity_period.get().to_string()
                             on:input=move |ev| {
                                 let target = ev.target().unwrap();
                                 let input: HtmlInputElement = target.dyn_into().unwrap();
                                 if let Ok(value) = input.value().parse() {
-                                    set_requests_per_hour.set(value);
+                                    set_inactivity_period.set(value);
                                 }
                             }
                         />
@@ -768,10 +759,7 @@ fn Header(
             description: None,
             turn_off_port: Some(3000),
             can_be_turned_off: false,
-            request_rate: RequestRateConfig {
-                max_requests: 60,
-                period_minutes: 60,
-            },
+            inactivity_period: 60,
             port_forwards: vec![PortForward {
                 name: None,
                 local_port: 0,
@@ -1402,10 +1390,7 @@ fn AddMachine(
                             description: None,
                             turn_off_port: None,
                             can_be_turned_off: false,
-                            request_rate: RequestRateConfig {
-                                max_requests: 60,
-                                period_minutes: 60,
-                            },
+                            inactivity_period: 60,
                             port_forwards: vec![],
                         });
                         set_port_forwards.set(vec![]);
@@ -1792,10 +1777,7 @@ fn HomePage() -> impl IntoView {
         description: None,
         turn_off_port: Some(3000),
         can_be_turned_off: false,
-        request_rate: RequestRateConfig {
-            max_requests: 60,
-            period_minutes: 60,
-        },
+        inactivity_period: 60,
         port_forwards: vec![PortForward {
             name: None,
             local_port: 0,

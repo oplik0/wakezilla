@@ -36,12 +36,16 @@ use crate::forward;
 const DEFAULT_DB_PATH: &str = "machines.json";
 
 fn machines_db_path() -> PathBuf {
-    let executable_path = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    let executable_dir = executable_path.parent().unwrap_or_else(|| Path::new("."));
-    let default_path = executable_dir.join(DEFAULT_DB_PATH);
-    std::env::var("WAKEZILLA_MACHINES_DB_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| default_path)
+    // First check for environment variable override
+    if let Ok(path) = std::env::var("WAKEZILLA__STORAGE__MACHINES_DB_PATH") {
+        return PathBuf::from(path);
+    }
+
+    // Use current working directory as default (not executable directory)
+    // This ensures the file is saved/loaded from where the user runs the command
+    env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(DEFAULT_DB_PATH)
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -56,8 +60,8 @@ pub struct Machine {
     pub description: Option<String>,
     pub turn_off_port: Option<u16>,
     pub can_be_turned_off: bool,
-    #[serde(default = "get_default_request_rate")]
-    pub request_rate: RequestRateConfig,
+    #[serde(default = "get_default_inactivity_period")]
+    pub inactivity_period: u32,
 
     pub port_forwards: Vec<PortForward>,
 }
@@ -103,8 +107,7 @@ pub struct AddMachineForm {
     pub turn_off_port: Option<u16>,
     #[serde(default = "default_can_be_turned_off")]
     pub can_be_turned_off: bool,
-    pub requests_per_hour: Option<u32>,
-    pub period_minutes: Option<u32>,
+    pub inactivity_period: Option<u32>,
     pub port_forwards: Option<Vec<PortForward>>,
 }
 
@@ -119,22 +122,12 @@ pub struct MachinePayload {
     pub turn_off_port: Option<u16>,
     #[serde(default = "default_can_be_turned_off")]
     pub can_be_turned_off: bool,
-    pub requests_per_hour: Option<u32>,
-    pub period_minutes: Option<u32>,
+    pub inactivity_period: Option<u32>,
     pub port_forwards: Option<Vec<PortForward>>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct RequestRateConfig {
-    pub max_requests: u32,
-    pub period_minutes: u32,
-}
-
-pub fn get_default_request_rate() -> RequestRateConfig {
-    RequestRateConfig {
-        max_requests: 10,
-        period_minutes: 30,
-    }
+pub fn get_default_inactivity_period() -> u32 {
+    30
 }
 
 fn default_can_be_turned_off() -> bool {
@@ -146,6 +139,8 @@ pub struct AppState {
     pub machines: Arc<RwLock<Vec<Machine>>>,
     pub proxies: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
     pub connection_pool: ConnectionPool,
+    pub turn_off_limiter: Arc<forward::TurnOffLimiter>,
+    pub monitor_handle: Arc<std::sync::Mutex<Option<tokio::task::AbortHandle>>>,
 }
 
 /// Load machines using the configured database path
@@ -175,6 +170,7 @@ pub fn load_machines_from_path<P: AsRef<Path>>(path: P) -> Result<Vec<Machine>> 
 }
 
 pub fn save_machines(machines: &[Machine]) -> Result<()> {
+    tracing::debug!("Saving machines {:?}", machines);
     let data =
         serde_json::to_string_pretty(machines).context("Failed to serialize machines data")?;
     let path = machines_db_path();
@@ -196,6 +192,7 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
 
         let proxies_clone = state.proxies.clone();
         let connection_pool_clone = state.connection_pool.clone();
+        let limiter_clone = state.turn_off_limiter.clone();
         tokio::spawn(async move {
             let mut proxies = proxies_clone.write().await;
             proxies.insert(proxy_key.clone(), tx);
@@ -203,13 +200,14 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
             // We can't hold the lock across the await, so we need to drop it here
             drop(proxies);
 
-            if let Err(e) = forward::proxy(
+            if let Err(e) = forward::TurnOffLimiter::proxy(
                 local_port,
                 remote_addr,
                 machine_clone,
                 wol_port,
                 rx,
                 connection_pool_clone,
+                limiter_clone,
             )
             .await
             {
@@ -220,6 +218,26 @@ pub fn start_proxy_if_configured(machine: &Machine, state: &AppState) {
             }
         });
     }
+}
+
+pub fn start_global_monitor(state: &AppState) {
+    let mut handle_guard = state.monitor_handle.lock().unwrap();
+    if handle_guard.is_none() {
+        let handle = state.turn_off_limiter.start_inactivity_monitor();
+        *handle_guard = Some(handle);
+        info!("Started global inactivity monitor");
+    }
+}
+
+pub fn restart_global_monitor(state: &AppState) {
+    let mut handle_guard = state.monitor_handle.lock().unwrap();
+    if let Some(handle) = handle_guard.take() {
+        handle.abort();
+        info!("Stopped old inactivity monitor");
+    }
+    let handle = state.turn_off_limiter.start_inactivity_monitor();
+    *handle_guard = Some(handle);
+    info!("Restarted global inactivity monitor");
 }
 
 #[cfg(test)]
@@ -286,7 +304,7 @@ mod tests {
                     "description": null,
                     "turn_off_port": 8080,
                     "can_be_turned_off": true,
-                    "request_rate": {"max_requests": 5, "period_minutes": 10},
+                    "inactivity_period": 10,
                     "port_forwards": []
                 }
             ]
@@ -305,7 +323,7 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp_dir = tempdir().expect("failed to create temp dir");
         let file_path = tmp_dir.path().join("machines.json");
-        let _guard = EnvGuard::set_path("WAKEZILLA_MACHINES_DB_PATH", &file_path);
+        let _guard = EnvGuard::set_path("WAKEZILLA__STORAGE__MACHINES_DB_PATH", &file_path);
 
         let machines = vec![Machine {
             mac: "AA:BB:CC:DD:EE:FF".to_string(),
@@ -314,7 +332,7 @@ mod tests {
             description: Some("Example".to_string()),
             turn_off_port: Some(9000),
             can_be_turned_off: true,
-            request_rate: get_default_request_rate(),
+            inactivity_period: get_default_inactivity_period(),
             port_forwards: vec![],
         }];
 
