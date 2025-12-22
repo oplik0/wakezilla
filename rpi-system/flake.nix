@@ -132,6 +132,8 @@
                 };
               };
             };
+            enableIPv6 = true;
+            useDHCP = true;
           };
 
           # Enable SSH
@@ -187,7 +189,7 @@
                   - service: http_status:404
                 EOF
                 
-                exec ${pkgs.cloudflared}/bin/cloudflared tunnel --config /run/cloudflared/config.yaml run
+                exec ${pkgs.cloudflared}/bin/cloudflared tunnel --config /run/cloudflared/config.yaml run $TUNNEL_ID
               '';
               RuntimeDirectory = "cloudflared";
               Restart = "on-failure";
