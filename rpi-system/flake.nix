@@ -3,8 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
-    sops-nix.url = "github:Mic92/sops-nix";
+
+    nixos-raspberrypi = {
+      url = "github:nvmd/nixos-raspberrypi/main";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Use the local parent directory for wakezilla during development
     wakezilla.url = "path:..";
     
@@ -69,8 +78,9 @@
           sops = {
             defaultSopsFile = ./secrets/secrets.yaml;
             
-            # Use the pre-generated SSH host key for decryption
-            age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+            # Use a custom path for the decryption key to avoid conflicts with
+            # system-generated keys or default locations that might be overwritten.
+            age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key_managed" ];
             
             # Define the secrets we need
             secrets = {
@@ -103,22 +113,23 @@
           # Use pre-generated SSH host keys (required for sops-nix to work on first boot)
           services.openssh.hostKeys = [
             {
-              path = "/etc/ssh/ssh_host_ed25519_key";
+              path = "/etc/ssh/ssh_host_ed25519_key_managed";
               type = "ed25519";
             }
           ];
 
-          # Copy pre-generated host keys into the image
+          # Copy pre-generated host keys into the image at a managed location.
+          # We use a custom suffix to ensure this file is not clobbered by system defaults.
           # The private key file must exist at ./keys/ssh_host_ed25519_key
           # Generate with: ../scripts/generate-host-keys.sh
           # 
           # NOTE: Build with --impure flag to access local key files:
           #   nix build .#nixosConfigurations.rpi.config.system.build.images.sd-card --impure
-          environment.etc."ssh/ssh_host_ed25519_key" = {
+          environment.etc."ssh/ssh_host_ed25519_key_managed" = {
             source = "${host-keys}/ssh_host_ed25519_key";
             mode = "0600";
           };
-          environment.etc."ssh/ssh_host_ed25519_key.pub" = {
+          environment.etc."ssh/ssh_host_ed25519_key_managed.pub" = {
             source = "${host-keys}/ssh_host_ed25519_key.pub";
             mode = "0644";
           };
