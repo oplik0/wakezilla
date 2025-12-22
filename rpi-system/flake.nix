@@ -75,9 +75,16 @@
             # Define the secrets we need
             secrets = {
               # WiFi environment file (contains WIFI_TEST_PSK and WIFI_TRISTATE_PSK)
-              "wifi/env" = {};
+              "wifi/env" = {
+                # wpa_supplicant runs as root, but needs to be able to read this
+                mode = "0400";
+              };
               
-              "cloudflare/tunnelId" = {};
+              "cloudflare/tunnelId" = {
+                owner = "cloudflared";
+                group = "cloudflared";
+                mode = "0400";
+              };
               "cloudflare/tunnelCredentials" = {
                 # Write credentials to the cloudflared config location
                 path = "/etc/cloudflared/credentials.json";
@@ -85,7 +92,11 @@
                 group = "cloudflared";
                 mode = "0600";
               };
-              "cloudflare/domain" = {};
+              "cloudflare/domain" = {
+                owner = "cloudflared";
+                group = "cloudflared";
+                mode = "0400";
+              };
             };
           };
 
@@ -121,6 +132,8 @@
             hostName = "wol-rpi";
             wireless = {
               enable = true;
+              # Use wpa_supplicant (declarative)
+              # userControlled.enable = false;
               # secretsFile is read at runtime and provides PSK values
               secretsFile = config.sops.secrets."wifi/env".path;
               networks = {
@@ -132,8 +145,25 @@
                 };
               };
             };
+            # Configure network interfaces
+            interfaces = {
+              wlan0 = {
+                useDHCP = true;
+              };
+            };
             enableIPv6 = true;
-            useDHCP = true;
+            useDHCP = lib.mkDefault true;
+            # Enable verbose logging for WiFi debugging
+            dhcpcd.extraConfig = ''
+              # Increase DHCP timeout
+              timeout 60
+            '';
+          };
+
+          # Ensure wpa_supplicant waits for secrets to be available
+          systemd.services.wpa_supplicant = {
+            after = [ "sops-nix.service" ];
+            wants = [ "sops-nix.service" ];
           };
 
           # Enable SSH
@@ -171,11 +201,16 @@
             after = [ "network-online.target" "sops-nix.service" ];
             wants = [ "network-online.target" ];
             wantedBy = [ "multi-user.target" ];
+            # Ensure secrets are available before starting
+            requires = [ "sops-nix.service" ];
             
             serviceConfig = {
               User = "cloudflared";
               Group = "cloudflared";
               ExecStart = pkgs.writeShellScript "cloudflared-start" ''
+                # Wait a moment for secrets to be fully available
+                sleep 1
+                
                 TUNNEL_ID=$(cat ${config.sops.secrets."cloudflare/tunnelId".path})
                 DOMAIN=$(cat ${config.sops.secrets."cloudflare/domain".path})
                 
@@ -189,7 +224,7 @@
                   - service: http_status:404
                 EOF
                 
-                exec ${pkgs.cloudflared}/bin/cloudflared tunnel --config /run/cloudflared/config.yaml run $TUNNEL_ID
+                exec ${pkgs.cloudflared}/bin/cloudflared tunnel --config /run/cloudflared/config.yaml run
               '';
               RuntimeDirectory = "cloudflared";
               Restart = "on-failure";
